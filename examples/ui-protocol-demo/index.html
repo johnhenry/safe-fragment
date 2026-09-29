@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>safe-fragment -- ui-v1 example</title>
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        max-width: 640px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      safe-fragment {
+        display: block;
+      }
+      #log {
+        font-family: ui-monospace, monospace;
+        white-space: pre-wrap;
+        background: #f4f4f4;
+        padding: 0.75rem;
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>safe-fragment: ui-v1 + data-action example</h1>
+    <p>
+      Run <code>npm run build</code> first, then serve this directory and open this file. "rating-stars" is an application-registered custom element (via
+      <code>defineProfile</code>); clicking Save/Delete dispatches <code>safe-fragment:action</code>, never inline code.
+    </p>
+    <div id="app"></div>
+    <pre id="log"></pre>
+    <script type="module">
+      import { run } from "./main.mjs";
+      const log = document.getElementById("log");
+      await run(document.getElementById("app"), {
+        onAction: (detail) => {
+          log.textContent += `action: ${detail.action}\n`;
+        },
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>safe-fragment -- article-v1 example</title>
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        max-width: 640px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      safe-fragment {
+        display: block;
+      }
+      img {
+        max-width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>safe-fragment: article-v1 example</h1>
+    <p>
+      Run <code>npm run build</code> first, then serve this directory (e.g. <code>npx serve .</code> from the repo root) and open this file -- it imports the
+      built <code>../../dist/index.js</code>.
+    </p>
+    <div id="app"></div>
+    <script type="module">
+      import { run } from "./main.mjs";
+      const { report } = await run(document.getElementById("app"));
+      console.log("SanitizationReport:", report);
+    </script>
+  </body>
+</html>

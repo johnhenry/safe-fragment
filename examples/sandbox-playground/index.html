@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>safe-fragment -- &lt;example-sandbox&gt; example</title>
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        max-width: 640px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      example-sandbox {
+        display: block;
+        border: 1px solid #ccc;
+      }
+      #log {
+        font-family: ui-monospace, monospace;
+        white-space: pre-wrap;
+        background: #f4f4f4;
+        padding: 0.75rem;
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>&lt;example-sandbox&gt;: docs playground example</h1>
+    <p>
+      Run <code>npm run build</code> first, then serve this directory and open this file. Unlike <code>&lt;safe-fragment&gt;</code>, this component runs real
+      code on purpose, isolated in a sandboxed iframe with no <code>allow-same-origin</code>.
+    </p>
+    <div id="app"></div>
+    <pre id="log"></pre>
+    <script type="module">
+      import { run } from "./main.mjs";
+      const log = document.getElementById("log");
+      const { messages, errors } = await run(document.getElementById("app"));
+      for (const m of messages) log.textContent += `[${m.method}] ${m.args.join(" ")}\n`;
+      for (const e of errors) log.textContent += `[error] ${e.message}\n`;
+    </script>
+  </body>
+</html>

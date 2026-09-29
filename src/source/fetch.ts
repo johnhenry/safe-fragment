@@ -1,0 +1,142 @@
+import { SafeFragmentError } from "../errors.js";
+
+/** The `src`-fetch capability model. Disabled by default -- an application must opt in explicitly via `registerSafeFragment({ fetch: { enabled: true, ... } })`. */
+export interface FetchCapability {
+  enabled: boolean;
+  /** Cross-origin origins (e.g. `"https://cdn.example.com"`) allowed in addition to the page's own origin. Same-origin requests are always allowed once `enabled` is true; nothing else is, unless listed here. */
+  allowedOrigins: readonly string[];
+  /** Hard cap on response body size, in bytes. Enforced during streaming, not just via `Content-Length` (which an attacker-controlled or misconfigured server could omit or lie about). */
+  maxBytes: number;
+  /** Abort the fetch if it hasn't completed within this many milliseconds. */
+  timeoutMs: number;
+}
+
+export const DEFAULT_FETCH_CAPABILITY: FetchCapability = Object.freeze({
+  enabled: false,
+  allowedOrigins: Object.freeze([]),
+  maxBytes: 250_000,
+  timeoutMs: 8_000,
+});
+
+function combineSignals(signals: AbortSignal[]): AbortSignal {
+  const AnyCapableAbortSignal = AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal };
+  if (typeof AnyCapableAbortSignal.any === "function") {
+    return AnyCapableAbortSignal.any(signals);
+  }
+  const controller = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) {
+      controller.abort(s.reason);
+      break;
+    }
+    s.addEventListener("abort", () => controller.abort(s.reason), { once: true });
+  }
+  return controller.signal;
+}
+
+/**
+ * Fetches and returns the raw text body of `rawUrl`, subject to the
+ * capability model: disabled by default, GET-only (not configurable --
+ * there is no parameter to request another method), same-origin unless
+ * `capability.allowedOrigins` explicitly lists the target origin,
+ * size-capped (checked both via `Content-Length` up front and while
+ * streaming, since a header can lie or be absent), and time-limited.
+ *
+ * `callerSignal` is the render's own `AbortSignal` -- when a newer
+ * `render()` call supersedes this one, the caller aborts `callerSignal`,
+ * which this function's `combineSignals` folds in immediately so an
+ * in-flight fetch for a stale render can never resolve after (and
+ * overwrite the output of) a newer one.
+ */
+export async function fetchSource(doc: Document, rawUrl: string, capability: FetchCapability, callerSignal: AbortSignal): Promise<string> {
+  if (!capability.enabled) {
+    throw new SafeFragmentError(
+      "FETCH_DISABLED",
+      "The `src` remote-fetch source is disabled. Enable it via registerSafeFragment({ fetch: { enabled: true, allowedOrigins: [...] } }).",
+    );
+  }
+
+  let url: URL;
+  try {
+    url = new URL(rawUrl, doc.baseURI);
+  } catch (cause) {
+    throw new SafeFragmentError("FETCH_FAILED", `"src" is not a resolvable URL.`, { cause });
+  }
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new SafeFragmentError("FETCH_ORIGIN_NOT_ALLOWED", `Scheme "${url.protocol}" is not fetchable; only http(s) URLs are allowed.`);
+  }
+
+  const pageOrigin = doc.defaultView?.location?.origin;
+  const sameOrigin = pageOrigin !== undefined && url.origin === pageOrigin;
+  if (!sameOrigin && !capability.allowedOrigins.includes(url.origin)) {
+    throw new SafeFragmentError(
+      "FETCH_ORIGIN_NOT_ALLOWED",
+      `Origin "${url.origin}" is not the page's own origin and is not in the configured allowedOrigins allowlist.`,
+      {
+        details: { origin: url.origin },
+      },
+    );
+  }
+
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), capability.timeoutMs);
+  const signal = combineSignals([callerSignal, timeoutController.signal]);
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "GET",
+      redirect: "follow",
+      credentials: "same-origin",
+      signal,
+    });
+  } catch (cause) {
+    clearTimeout(timeoutId);
+    if (callerSignal.aborted) {
+      throw new SafeFragmentError("FETCH_SUPERSEDED", "Fetch was superseded by a newer render() call.", { cause });
+    }
+    if (timeoutController.signal.aborted) {
+      throw new SafeFragmentError("FETCH_TIMEOUT", `Fetch exceeded the ${capability.timeoutMs}ms timeout.`, { cause });
+    }
+    throw new SafeFragmentError("FETCH_FAILED", "Network request failed.", { cause });
+  }
+  clearTimeout(timeoutId);
+
+  if (!response.ok) {
+    throw new SafeFragmentError("FETCH_NON_2XX", `Fetch returned HTTP ${response.status}.`, { details: { status: response.status } });
+  }
+
+  const contentLengthHeader = response.headers.get("content-length");
+  if (contentLengthHeader !== null) {
+    const declared = Number(contentLengthHeader);
+    if (Number.isFinite(declared) && declared > capability.maxBytes) {
+      throw new SafeFragmentError("FETCH_SIZE_EXCEEDED", `Content-Length (${declared} bytes) exceeds the ${capability.maxBytes}-byte cap.`);
+    }
+  }
+
+  if (!response.body) {
+    const text = await response.text();
+    if (text.length > capability.maxBytes) {
+      throw new SafeFragmentError("FETCH_SIZE_EXCEEDED", `Response body exceeds the ${capability.maxBytes}-byte cap.`);
+    }
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let received = 0;
+  let result = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > capability.maxBytes) {
+      await reader.cancel("size-cap-exceeded").catch(() => {});
+      throw new SafeFragmentError("FETCH_SIZE_EXCEEDED", `Response body exceeded the ${capability.maxBytes}-byte cap while streaming.`);
+    }
+    result += decoder.decode(value, { stream: true });
+  }
+  result += decoder.decode();
+  return result;
+}
