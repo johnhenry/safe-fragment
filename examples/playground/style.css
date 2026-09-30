@@ -1,0 +1,375 @@
+:root {
+  color-scheme: dark;
+  --bg: #101014;
+  --bg-panel: #17171d;
+  --bg-inset: #0c0c10;
+  --border: #2a2a33;
+  --text: #e4e4ea;
+  --dim: #8a8a96;
+  --accent: #6ab0ff;
+  --danger: #ff5c5c;
+  --safe: #3ddc84;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px 24px 64px;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 system-ui, sans-serif;
+}
+
+header {
+  max-width: 1100px;
+  margin: 0 auto 20px;
+}
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 26px;
+}
+
+h1 .dim {
+  color: var(--dim);
+  font-weight: 400;
+}
+
+.lede {
+  max-width: 80ch;
+  color: var(--dim);
+  margin: 0 0 16px;
+}
+
+code {
+  font-family: var(--mono);
+  background: #000;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.9em;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font: inherit;
+  padding: 10px 16px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+main {
+  max-width: 1100px;
+  margin: 20px auto 0;
+}
+
+.panel {
+  display: none;
+}
+
+.panel.active {
+  display: block;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.chip {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.editor-row {
+  margin-bottom: 16px;
+}
+
+#rich-input {
+  width: 100%;
+  height: 160px;
+  background: var(--bg-inset);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font: 13px/1.5 var(--mono);
+  resize: vertical;
+}
+
+.compare-row,
+.report-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 800px) {
+  .compare-row,
+  .report-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.box.danger {
+  border-color: #4a1f1f;
+}
+
+.box.safe {
+  border-color: #1f4a30;
+}
+
+.box h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+#raw-frame {
+  width: 100%;
+  height: 220px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.rendered-box {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 60px;
+  background: var(--bg-inset);
+  overflow: auto;
+  max-height: 260px;
+}
+
+.rendered-box img {
+  max-width: 100%;
+}
+
+/* Styling for the ui-v1 demo's allowlisted custom elements -- these are
+   plain undefined elements (defineProfile only allowlists tags for the
+   sanitizer, it doesn't register a class), so any look comes from here. */
+ui-card {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, #1c1c24, #16161c);
+}
+
+ui-card h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+ui-card p {
+  margin: 0 0 12px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+ui-stat {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 14px;
+  margin: 0 10px 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-inset);
+  min-width: 100px;
+}
+
+ui-stat::before {
+  content: attr(label);
+  font-size: 11px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+ui-stat::after {
+  content: attr(value) " " attr(trend);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+ui-button {
+  display: inline-block;
+  padding: 8px 16px;
+  margin: 0 8px 0 0;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid var(--border);
+  background: #2a2a33;
+  color: var(--text);
+}
+
+ui-button:hover {
+  filter: brightness(1.15);
+}
+
+ui-button[variant="primary"] {
+  background: var(--accent);
+  color: #08131f;
+  border-color: var(--accent);
+}
+
+ui-button[variant="danger"] {
+  background: var(--danger);
+  color: #2a0a0a;
+  border-color: var(--danger);
+}
+
+ui-button[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.diff-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.diff-list li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-list li:last-child {
+  border-bottom: none;
+}
+
+.diff-list li.neutralized {
+  color: var(--safe);
+}
+
+.diff-list li.still-present {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.fine-print {
+  font-size: 12px;
+  color: var(--dim);
+  margin: 10px 0 0;
+}
+
+.report-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+
+.report-meta b {
+  color: var(--text);
+}
+
+.note-group {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.note-group ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.note-group .snippet {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.note-empty,
+.rejected {
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.rejected {
+  color: var(--danger);
+}
+
+.log {
+  font-family: var(--mono);
+  font-size: 12px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.log-line {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.code-block {
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.dim {
+  color: var(--dim);
+}
+
+footer {
+  max-width: 1100px;
+  margin: 40px auto 0;
+  font-size: 13px;
+  color: var(--dim);
+}
+
+footer a {
+  color: var(--accent);
+}

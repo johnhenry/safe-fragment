@@ -55,4 +55,32 @@ describe("examples (run against the built dist/, via npm run examples)", () => {
     expect(allText).toContain("Rendered.");
     expect(allText).toContain("Confirmed isolated from the host page");
   });
+
+  it("playground: default render neutralizes the fixture, and its own diff/report helpers agree with what actually rendered", async () => {
+    // @ts-expect-error -- see above.
+    const { run, renderProtected, dangerousPatternsIn, DEFAULT_PAYLOAD } = await import("../../examples/playground/main.mjs");
+    const container = makeContainer();
+    const { element, report } = await run(container, { tagName: "example-playground" });
+
+    expect(report.profile).toBe("article-v1");
+    const html = (element.getRenderedRoot() as Element).innerHTML;
+    expect(html.toLowerCase()).not.toContain("onerror");
+    expect(html.toLowerCase()).not.toContain("javascript:");
+    expect(html.toLowerCase()).not.toContain("<script");
+
+    // The demo's own before/after diff (not SanitizationReport, which only
+    // tracks enforceProfile's own removals -- see AGENTS.md) must agree that
+    // every dangerous pattern actually present in the fixture was neutralized.
+    const diffs = dangerousPatternsIn(DEFAULT_PAYLOAD, html);
+    expect(diffs.length).toBeGreaterThan(0);
+    for (const d of diffs) expect(d.stillPresent).toBe(false);
+
+    // renderProtected() must actually apply `.html` before awaiting its
+    // result -- a prior version of this helper awaited first, deadlocking
+    // every render into a spurious NO_SOURCE rejection.
+    const container2 = makeContainer();
+    const result = await renderProtected(container2, "<p>hi</p>", "article-v1", { tagName: "example-playground-2" });
+    expect(result.rejected).toBeUndefined();
+    expect(result.report?.profile).toBe("article-v1");
+  });
 });

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>safe-fragment -- playground</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>safe-fragment <span class="dim">/ playground</span></h1>
+      <p class="lede">
+        Type or paste HTML, or click a real attack from the test corpus. The left box is
+        <strong>completely unprotected</strong> -- literal <code>element.innerHTML = input</code> in a sandboxed
+        iframe, so if something fires, you'll see it. The right box is the same input through
+        <code>&lt;safe-fragment&gt;</code>.
+      </p>
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="rich" role="tab" aria-selected="true">Rich text (article-v1)</button>
+        <button class="tab" data-tab="agent" role="tab" aria-selected="false">Agent-generated UI (ui-v1)</button>
+        <button class="tab" data-tab="plain" role="tab" aria-selected="false">Plain text (plain-text-v1)</button>
+      </nav>
+    </header>
+
+    <main>
+      <!-- ============ RICH TEXT TAB ============ -->
+      <section id="panel-rich" class="panel active">
+        <div class="chips" id="attack-chips"></div>
+
+        <div class="editor-row">
+          <textarea id="rich-input" spellcheck="false"></textarea>
+        </div>
+
+        <div class="compare-row">
+          <div class="box danger">
+            <h3>❌ Unprotected <span class="dim">(raw innerHTML, sandboxed iframe)</span></h3>
+            <iframe id="raw-frame" title="unprotected render"></iframe>
+          </div>
+          <div class="box safe">
+            <h3>✅ Protected <span class="dim">(&lt;safe-fragment profile="article-v1"&gt;)</span></h3>
+            <div id="safe-container" class="rendered-box"></div>
+          </div>
+        </div>
+
+        <div class="report-row">
+          <div class="box">
+            <h3>Live diff <span class="dim">(computed by this page, not by safe-fragment -- see note)</span></h3>
+            <ul id="diff-list" class="diff-list"></ul>
+            <p class="fine-print">
+              This checklist is the demo's own before/after comparison of your raw input against
+              <code>getRenderedRoot().innerHTML</code>. It exists because <code>SanitizationReport</code> below only
+              records what <code>enforceProfile()</code> itself removed -- not what the underlying sanitizer engine
+              (native Sanitizer API / DOMPurify) already stripped as its own baseline defense before
+              <code>enforceProfile</code> ever sees the DOM. Both layers are real; the report just doesn't currently
+              attribute the engine's own removals. See <code>AGENTS.md</code>.
+            </p>
+          </div>
+          <div class="box">
+            <h3>SanitizationReport <span class="dim">(from safe-fragment itself)</span></h3>
+            <div id="report-output"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ AGENT UI TAB ============ -->
+      <section id="panel-agent" class="panel">
+        <p class="lede">
+          <code>ui-v1</code> lets an application allowlist specific custom elements and a
+          <code>data-action</code>/<code>data-value</code> protocol. Markup -- even markup from an LLM -- can
+          <em>request</em> an action; only the host application decides what, if anything, actually happens.
+        </p>
+        <div class="chips" id="agent-chips"></div>
+        <div class="compare-row">
+          <div class="box safe">
+            <h3>Rendered agent message</h3>
+            <div id="agent-container" class="rendered-box"></div>
+          </div>
+          <div class="box">
+            <h3>Host application log</h3>
+            <div id="agent-log" class="log"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PLAIN TEXT TAB ============ -->
+      <section id="panel-plain" class="panel">
+        <p class="lede">
+          The safest profile: no HTML parser runs on the input at all. Everything, including the payload above,
+          becomes inert text.
+        </p>
+        <div class="compare-row">
+          <div class="box">
+            <h3>Input</h3>
+            <pre id="plain-input" class="code-block"></pre>
+          </div>
+          <div class="box safe">
+            <h3>Rendered (profile="plain-text-v1")</h3>
+            <div id="plain-container" class="rendered-box"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        <a href="../../README.md">README</a> · <a href="../article-viewer/">article-viewer</a> ·
+        <a href="../ui-protocol-demo/">ui-protocol-demo</a> · <a href="../sandbox-playground/">sandbox-playground</a>
+        · <a href="https://github.com/johnhenry/safe-fragment">source</a>
+      </p>
+    </footer>
+
+    <script type="module" src="./playground.mjs"></script>
+  </body>
+</html>

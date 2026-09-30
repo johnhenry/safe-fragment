@@ -31,6 +31,7 @@ see [Security model](#security-model) below.
 - [Security model](#security-model)
 - [Install](#install)
 - [Quick start](#quick-start)
+- [Try it live](#try-it-live)
 - [`<safe-fragment>` API](#safe-fragment-api)
 - [Profiles](#profiles)
 - [The `src` remote-fetch capability](#the-src-remote-fetch-capability)
@@ -157,6 +158,28 @@ read):
 <!-- Renders: <p>Hello <strong>world</strong>. <img src="x"></p> -- the
      onerror attribute is gone; nothing executes. -->
 ```
+
+## Try it live
+
+```sh
+npm run build && npx http-server . -p 4995
+```
+
+Then open **`examples/playground/`** -- type or paste HTML, or click a real
+attack from the test corpus (img `onerror`, `javascript:` links, `svg
+onload`, formaction hijacking). One box renders it completely
+unprotected (literal `innerHTML` in a sandboxed iframe -- if something
+fires, you'll see it happen); the other renders the same input through
+`<safe-fragment>`. A second tab demos the `ui-v1` "content requests, host
+decides" action protocol with a live application log.
+
+The other three examples (`article-viewer/`, `ui-protocol-demo/`,
+`sandbox-playground/`) are smaller, single-scenario versions of the same
+ideas, each also exercised directly by
+`test/examples/examples-smoke.test.ts`. `npx serve .` also works for any
+of them, but needs a `serve.json` with `cleanUrls: false` in the repo root
+(already present) -- `serve`'s default URL rewriting otherwise breaks the
+examples' relative `./main.mjs` imports.
 
 ## `<safe-fragment>` API
 
@@ -316,9 +339,21 @@ profile="...">`.
   falls back to eager rendering when it isn't (rather than never
   rendering) -- not independently stress-tested beyond the unit-level
   behavior.
-- Examples (`examples/`) are runnable but minimal -- three scenarios
-  (article viewer, `ui-v1` protocol demo, sandbox playground), not a full
-  documentation site.
+- Examples (`examples/`) are runnable, not a full documentation site --
+  four scenarios (an interactive playground, plus single-scenario article
+  viewer / `ui-v1` protocol demo / sandbox playground versions of the same
+  ideas). See [Try it live](#try-it-live).
+- **`SanitizationReport` only records what `enforceProfile()` itself
+  removed, not what the underlying sanitizer engine (native Sanitizer API
+  / DOMPurify) already stripped as its own baseline defense before
+  `enforceProfile` ever sees the DOM.** For a compound payload (e.g. an
+  `onerror` handler alongside a profile-disallowed element), the report
+  can under-count real removals -- the dangerous attribute is genuinely
+  gone from the output, but `removedAttributes` won't mention it. Found
+  while building `examples/playground/`'s live report panel, which
+  surfaces this explicitly rather than hiding it. Attributing engine-level
+  removals to the report would need a before/after DOM diff around the
+  engine call and hasn't been done -- flagged for review, not fixed here.
 
 ## What still needs human review
 

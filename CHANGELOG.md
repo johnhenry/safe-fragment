@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Added `examples/playground/` -- an interactive demo: type or paste HTML,
+  or click a real attack from the test corpus, and watch it rendered two
+  ways at once (raw `innerHTML` in a sandboxed iframe, where a live attack
+  actually fires; and through `<safe-fragment>`, where it doesn't), plus a
+  live diff and the real `SanitizationReport`. A second tab demos `ui-v1`'s
+  action protocol with a styled agent-generated UI and a host application
+  log. Building it caught two real bugs in the example's own helper code
+  (not in `src/`): `renderProtected()` awaited the render promise before
+  setting `.html`, deadlocking every render into a spurious `NO_SOURCE`
+  rejection; and embedding a payload containing a literal `</script>` into
+  the iframe's `srcdoc` via `JSON.stringify()` without escaping it broke
+  the iframe's own controlling script (the HTML parser closes on the
+  embedded `</script>` regardless of JS string context). It also surfaced
+  a real gap in `SanitizationReport` itself -- see the new "Known
+  limitations" entry in README.md.
 - Added `serve.json` (`{"cleanUrls": false}`) -- without it, `npx serve .`
   (the exact command the examples' own instructions suggest) redirects
   away the trailing path segment and breaks the examples' relative
