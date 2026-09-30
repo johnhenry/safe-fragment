@@ -83,6 +83,18 @@ three ADRs in docs/adr/ before touching `src/sanitize/` or `src/policy/`.
   importable in Node/SSR. Every browser-global access lives inside a
   function body (see `src/platform/environment.ts` and the
   `create*ElementClass()` factory pattern in docs/architecture.md).
+- **`npx serve .` (the exact command the examples' own HTML tells you to
+  run) breaks module resolution unless `serve.json`'s `cleanUrls: false`
+  is present at the repo root.** `serve`'s default "clean URLs" behavior
+  redirects `/examples/article-viewer/index.html` → `.../index` →
+  `.../article-viewer` (no trailing slash), which shifts the browser's
+  relative-URL base up one directory, so `./main.mjs` 404s as
+  `/examples/main.mjs`. `npm run examples`'s automated Vitest Browser Mode
+  check never hits this (it imports the example module directly, not
+  through a real static-file-server navigation), so this only surfaces
+  when a human actually opens an example in a browser via the README's
+  own suggested command -- confirmed by doing exactly that. Don't remove
+  `serve.json` or "simplify" it away.
 
 ## Definition of done
 
