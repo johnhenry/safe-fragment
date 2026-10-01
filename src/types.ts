@@ -1,4 +1,4 @@
-import type { SafeFragmentErrorCode } from "./errors.js";
+import type { SafeFragmentError, SafeFragmentErrorCode } from "./errors.js";
 
 /** How `<safe-fragment>` schedules re-renders. */
 export type RenderMode = "replace" | "once" | "manual";
@@ -49,10 +49,28 @@ export interface SanitizationReport {
   truncated: boolean;
 }
 
+/** Which markup source a render used (see the README's source precedence). */
+export type SourceKind = "html-property" | "template-child" | "src" | "content-attribute";
+
+/** What `render()`/`refresh()` resolved with. */
+export interface RenderResult {
+  status: "rendered" | "rejected" | "superseded" | "disabled";
+  /** Set for `rejected`, `disabled`, and for a `superseded` render whose fetch was cut short (`FETCH_SUPERSEDED`/`FETCH_ABORTED`). */
+  error?: SafeFragmentError;
+  /** Set when `status` is `rendered`. */
+  report?: SanitizationReport;
+}
+
+/** Detail payload of the `safe-fragment:clear` event. */
+export interface ClearDetail {
+  /** `clear`: `clear()` was called; `disabled`: the element was disabled; `rejected`: a render was rejected and the stale content removed. */
+  reason: "clear" | "disabled" | "rejected";
+}
+
 /** Detail payload of the `safe-fragment:before-render` event. Cancelable -- calling `preventDefault()` aborts the render. */
 export interface BeforeRenderDetail {
   profile: string;
-  sourceKind: "html-property" | "template-child" | "src" | "content-attribute";
+  sourceKind: SourceKind;
 }
 
 /** Detail payload of the `safe-fragment:render` event. */

@@ -8,7 +8,29 @@ import { sanitizeWithDOMPurify, getDOMPurify, peekDOMPurify, type DOMPurifyLoade
 import { enforceProfile } from "./enforce.js";
 import { rebuildFragment } from "./rebuild.js";
 
+/** Default cap on the markup string handed to a sanitizer (UTF-16 code units); see `SanitizeOptions.maxInputLength`. */
+export const DEFAULT_MAX_INPUT_LENGTH = 1_000_000;
+
+function assertInputWithinLimit(html: string, options: SanitizeOptions): void {
+  const limit = options.maxInputLength ?? DEFAULT_MAX_INPUT_LENGTH;
+  if (typeof html !== "string") {
+    throw new SafeFragmentError("INVALID_SOURCE", `The markup source must be a string, got ${html === null ? "null" : typeof html}.`);
+  }
+  if (html.length > limit) {
+    throw new SafeFragmentError("SOURCE_TOO_LARGE", `The markup source is ${html.length} characters; the limit is ${limit} (maxInputLength).`, {
+      details: { length: html.length, limit },
+    });
+  }
+}
+
 export interface SanitizeOptions {
+  /**
+   * Largest accepted input, in UTF-16 code units (default 1,000,000). The
+   * DOMPurify fallback removes nodes one at a time and is quadratic on
+   * inputs with very many removed elements (100k of them took 12-47 s), so an
+   * unbounded string is a denial-of-service lever. Raise it deliberately.
+   */
+  maxInputLength?: number;
   /** Force a specific engine, bypassing feature detection. Test-only; not exposed on the public custom-element API. */
   forceEngine?: "native" | "dompurify";
   /** True if the input was truncated upstream (e.g. by the `src` fetch size cap) before reaching the sanitizer. */
@@ -45,6 +67,7 @@ export async function sanitize(
   options: SanitizeOptions = {},
 ): Promise<SanitizeResult> {
   const start = nowMs();
+  assertInputWithinLimit(html, options);
   if (profile.mode === "text") return textResult(doc, html, profile, options, start);
 
   const baseline = buildBaselineConfig(profile, customElements);
@@ -78,6 +101,7 @@ export function sanitizeSync(
   options: SanitizeOptions = {},
 ): SanitizeResult {
   const start = nowMs();
+  assertInputWithinLimit(html, options);
   if (profile.mode === "text") return textResult(doc, html, profile, options, start);
 
   const baseline = buildBaselineConfig(profile, customElements);

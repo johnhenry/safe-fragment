@@ -16,6 +16,8 @@ export interface RegisterSafeFragmentOptions {
    * Without it, the bare specifier `dompurify` must resolve (import map or bundler).
    */
   loadDOMPurify?: DOMPurifyLoader;
+  /** Longest markup string accepted per render, in UTF-16 code units (default 1,000,000); longer sources reject with `SOURCE_TOO_LARGE`. */
+  maxInputLength?: number;
   /** Explicit `Document`/`CustomElementRegistry`/`HTMLElement` overrides -- mainly for tests that construct their own realm. Defaults to the ambient globals. */
   document?: Document;
   customElementRegistry?: CustomElementRegistry;
@@ -58,6 +60,6 @@ export function registerSafeFragment(options: RegisterSafeFragmentOptions = {}):
     allowedOrigins: options.fetch?.allowedOrigins ?? DEFAULT_FETCH_CAPABILITY.allowedOrigins,
   };
 
-  const ElementClass = createSafeFragmentElementClass(HTMLElementBase, { fetchCapability });
+  const ElementClass = createSafeFragmentElementClass(HTMLElementBase, { fetchCapability, maxInputLength: options.maxInputLength });
   registry.define(tagName, ElementClass);
 }

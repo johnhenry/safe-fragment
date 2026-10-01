@@ -9,10 +9,16 @@ export type SafeFragmentErrorCode =
   // Source resolution
   | "AMBIGUOUS_SOURCE"
   | "NO_SOURCE"
-  | "PARSE_FAILED"
+  /** A source value that is not a string (e.g. `el.html = {}`); never rendered as `[object Object]`. */
+  | "INVALID_SOURCE"
+  /** The source exceeds `maxInputLength` (bounds the sanitizer's worst-case cost). */
+  | "SOURCE_TOO_LARGE"
   // Profiles
   | "UNKNOWN_PROFILE"
+  /** A profile definition whose name and `version` disagree (e.g. `"x-v2"` declaring version 1). */
   | "PROFILE_MISMATCH"
+  /** `registerProfile`/`defineProfile` called with missing or invalid arguments, or colliding with a built-in. */
+  | "INVALID_PROFILE"
   // Sanitization
   | "SANITIZE_FAILED"
   | "SANITIZER_UNAVAILABLE"
@@ -21,7 +27,6 @@ export type SafeFragmentErrorCode =
   | "FETCH_DISABLED"
   | "FETCH_ORIGIN_NOT_ALLOWED"
   | "FETCH_REDIRECT_NOT_ALLOWED"
-  | "FETCH_METHOD_NOT_ALLOWED"
   | "FETCH_SIZE_EXCEEDED"
   | "FETCH_TIMEOUT"
   | "FETCH_ABORTED"
