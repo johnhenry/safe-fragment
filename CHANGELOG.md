@@ -33,6 +33,8 @@ nobody.
 
 ### Fixes and behavior changes
 
+- **Cross-engine value parity and mid-render state, found by an audit of the audit (`34b15dc`).** The native engine kept `href=" "`, padded attribute values and `href="java script:..."` / `href="javascript&#8203;:..."` that DOMPurify trims or drops; `enforceProfile` now trims every attribute value (except `value`) and `checkUrl` also rejects a URL that becomes a disallowed scheme once whitespace, control and format characters are removed (`test/security/cross-engine-values.test.ts`, `test/unit/enforce.test.ts`). A profile, `src`, `content`, `scope` or `.html` change, or a `<template>` edit, now invalidates a render already in flight in every render mode (before, only automatic mode did, so a manual-mode `render()` could land content produced under a looser profile; `test/integration/lifecycle-state.test.ts`). README gained `## Adding a new profile`.
+
 - **DOMPurify: one instance per window.** Re-creating it every render re-registered the Trusted Types `dompurify` policy, so a CSP `trusted-types dompurify` without `'allow-duplicates'` broke every render after the first. Added `loadDOMPurify`, `preloadSanitizer()`, an error message that says how to fix a missing import map, and an import map in every example page. Fixed in `f6b2528`.
 - **Element lifecycle** (`cac4555`): `loading="lazy"` routes `src` changes and reconnects through the gate; properties set before upgrade are replayed; `clear()` and disabling cancel in-flight renders and reset `once` mode; a rejected re-render clears stale content; `.html = undefined` is `null` and non-strings reject with `INVALID_SOURCE`; switching `scope` removes the stale wrapper; `scope="shadow"` delegation uses `composedPath()`; `scope`/`loading`/`strict`/`debug` are writable and enumerated values are case-insensitive; `render()` resolves a result object (`rendered`/`rejected`/`superseded`/`disabled`); moving an element does not re-render; `pagehide` tears down fetches and observers of an element in a removed iframe; `<template>` source edits are observed; `sourceKind` is a read-only property; `safe-fragment:clear` and `safe-fragment:disabled` events; `adoptedCallback`. An explicit `render()` supersedes a queued automatic one.
 - **`SanitizationReport` counts engine removals** on both engines (DOMPurify's `removed` log; a diff against an inert parse for native), where it used to under-count (`0a1bf0f`).
@@ -57,7 +59,7 @@ nobody.
 
 ### Tests
 
-The initial suite had 150 tests in 9 files, run in Chromium only. It is now 466 tests per browser in 19 files (plus 4 example smoke tests and 4 Node tests of the built packages), run in Chromium, WebKit and Firefox in CI. New: a benign-content corpus, corpus-wide engine equivalence, clobbering, URL-attribute and srcset, Trusted Types (DOMPurify and sandbox), lifecycle, public API, input-limit and dual-package suites. Corpus fixtures also assert that benign content survives.
+The initial suite had 150 tests in 9 files, run in Chromium only. It is now 497 tests per browser in 21 files (plus 4 example smoke tests and 4 Node tests of the built packages), run in Chromium, WebKit and Firefox in CI. New: a benign-content corpus, corpus-wide engine equivalence, clobbering, URL-attribute and srcset, Trusted Types (DOMPurify and sandbox), lifecycle, public API, input-limit and dual-package suites. Corpus fixtures also assert that benign content survives.
 
 ### Documentation
 
