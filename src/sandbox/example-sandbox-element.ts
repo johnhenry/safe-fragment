@@ -25,12 +25,29 @@
 
 const PROTOCOL_MARKER = "__safeFragmentExampleSandbox";
 
+export const DEFAULT_TRUSTED_TYPES_POLICY_NAME = "safe-fragment-sandbox";
+
 export interface ExampleSandboxDeps {
-  /** noop placeholder for future dependency injection; kept for symmetry with safe-fragment-element's factory shape. */
-  readonly _reserved?: never;
+  /**
+   * Name of the Trusted Types policy this component creates when the page
+   * enforces `require-trusted-types-for 'script'` (default
+   * `"safe-fragment-sandbox"`; add it to your CSP's `trusted-types` list).
+   * The policy is used in exactly two places, both for markup/code the
+   * application itself authored: assigning the sandbox's `iframe.srcdoc`, and
+   * (inside the sandbox, which inherits the page's CSP) compiling the code
+   * sample. It never touches anything `<safe-fragment>` renders. If the
+   * policy cannot be created (name not in the CSP list), the component emits
+   * `example-sandbox:error` instead of a sandbox.
+   */
+  trustedTypesPolicyName?: string;
 }
 
-export function createExampleSandboxElementClass(HTMLElementBase: typeof HTMLElement) {
+interface TrustedTypesWindow {
+  trustedTypes?: { createPolicy(name: string, rules: { createHTML(input: string): string }): { createHTML(input: string): string } };
+}
+const hostPolicies = new WeakMap<object, { createHTML(input: string): string }>();
+
+export function createExampleSandboxElementClass(HTMLElementBase: typeof HTMLElement, deps: ExampleSandboxDeps = {}) {
   return class ExampleSandboxElement extends HTMLElementBase {
     static get observedAttributes(): string[] {
       return ["height"];
@@ -76,6 +93,28 @@ export function createExampleSandboxElementClass(HTMLElementBase: typeof HTMLEle
       const height = this.getAttribute("height");
       if (height) iframe.style.height = height;
 
+      const policyName = deps.trustedTypesPolicyName ?? DEFAULT_TRUSTED_TYPES_POLICY_NAME;
+      const srcdoc = buildSrcdoc(code, policyName);
+      try {
+        // Assign FIRST: if this fails (Trusted Types enforced and the policy
+        // cannot be created), no listener has been registered and nothing is
+        // appended.
+        this.#assignSrcdoc(iframe, srcdoc, policyName);
+      } catch (cause) {
+        this.dispatchEvent(
+          new CustomEvent("example-sandbox:error", {
+            detail: {
+              message:
+                `Could not set the sandbox document (iframe.srcdoc). If the page enforces Trusted Types, add "${policyName}" to its trusted-types CSP list ` +
+                `(or pass trustedTypesPolicyName to registerExampleSandbox()). ` +
+                String(cause instanceof Error ? cause.message : cause),
+            },
+            bubbles: true,
+          }),
+        );
+        return;
+      }
+
       const listener = (event: MessageEvent): void => {
         if (event.source !== iframe.contentWindow) return; // authenticate by source identity, not origin (opaque origin here)
         const data = event.data as { [PROTOCOL_MARKER]?: boolean; type?: string; payload?: unknown } | null;
@@ -91,9 +130,25 @@ export function createExampleSandboxElementClass(HTMLElementBase: typeof HTMLEle
       this.#messageListener = listener;
       this.ownerDocument.defaultView?.addEventListener("message", listener);
 
-      iframe.srcdoc = buildSrcdoc(code);
       this.#iframe = iframe;
       this.appendChild(iframe);
+    }
+
+    /** Plain assignment first; only if the browser demands TrustedHTML do we create (once per window) the sandbox policy and retry. */
+    #assignSrcdoc(iframe: HTMLIFrameElement, srcdoc: string, policyName: string): void {
+      try {
+        iframe.srcdoc = srcdoc;
+        return;
+      } catch (error) {
+        const win = this.ownerDocument.defaultView as (Window & TrustedTypesWindow) | null;
+        if (!win?.trustedTypes) throw error;
+        let policy = hostPolicies.get(win);
+        if (!policy) {
+          policy = win.trustedTypes.createPolicy(policyName, { createHTML: (input: string) => input });
+          hostPolicies.set(win, policy);
+        }
+        iframe.srcdoc = policy.createHTML(srcdoc) as unknown as string;
+      }
     }
 
     reset(): void {
@@ -120,7 +175,7 @@ export function createExampleSandboxElementClass(HTMLElementBase: typeof HTMLEle
   };
 }
 
-function buildSrcdoc(userCode: string): string {
+function buildSrcdoc(userCode: string, policyName: string): string {
   // userCode is application-authored/trusted (see module doc comment) --
   // it is executed as real script inside the sandboxed iframe by design.
   // It is embedded via a JSON string literal (not string concatenation
@@ -128,7 +183,10 @@ function buildSrcdoc(userCode: string): string {
   // "</script>" or other markup-like text cannot break out of the
   // surrounding <script> element; it's evaluated with `new Function`,
   // not by naive text injection into the HTML parser.
-  const encoded = JSON.stringify(userCode);
+  // `<` is escaped too: JSON.stringify leaves "</script>" intact, which would
+  // end the surrounding <script> element early (and "<!--" can switch the
+  // script data state), breaking out of the string literal into markup.
+  const encoded = JSON.stringify(userCode).replaceAll("<", "\\u003c");
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"></head>
 <body>
@@ -157,7 +215,20 @@ function buildSrcdoc(userCode: string): string {
   post("ready", null);
   try {
     var userSource = ${encoded};
-    var run = new Function(userSource);
+    var run;
+    try {
+      run = new Function(userSource);
+    } catch (e) {
+      // Trusted Types enforced (the sandbox inherits the page's CSP): compile
+      // through a policy of the allowed name. A plain SyntaxError is not retried.
+      if (e && (e.name === "TypeError" || e.name === "EvalError") && window.trustedTypes && window.trustedTypes.createPolicy) {
+        var policy = window.trustedTypes.createPolicy(${JSON.stringify(policyName)}, { createScript: function (s) { return s; } });
+        // new Function rejects a TrustedScript here; indirect eval accepts one.
+        run = (0, eval)(policy.createScript("(function () {\\n" + userSource + "\\n})"));
+      } else {
+        throw e;
+      }
+    }
     run();
   } catch (e) {
     post("error", { message: String(e && e.message ? e.message : e) });

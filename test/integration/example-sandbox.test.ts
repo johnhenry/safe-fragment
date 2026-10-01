@@ -122,4 +122,66 @@ describe("<example-sandbox>", () => {
     const event = await messagePromise;
     expect(String(event.detail.args)).toContain("from template");
   });
+
+  it("code containing </script> and <!-- cannot break out of the srcdoc script element", async () => {
+    const el = create();
+    el.code = 'console.log("a</script><img src=x onerror=console.log(\\"BREAKOUT\\")>b <!-- c"); console.log("after");';
+    const messages: string[] = [];
+    el.addEventListener("example-sandbox:message", (e) => messages.push(((e as CustomEvent).detail.args as string[]).join(" ")));
+    const errors: string[] = [];
+    el.addEventListener("example-sandbox:error", (e) => errors.push(String((e as CustomEvent).detail.message)));
+    el.run();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(errors).toEqual([]);
+    expect(messages).toEqual(['a</script><img src=x onerror=console.log("BREAKOUT")>b <!-- c', "after"]);
+  });
+
+  it("does not register a message listener, or append an iframe, when the srcdoc assignment fails (TT policy name not allowed by the CSP)", async () => {
+    const iframeHost = document.createElement("iframe");
+    iframeHost.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'; trusted-types some-other-policy">`;
+    await new Promise<void>((resolve) => {
+      iframeHost.addEventListener("load", () => resolve(), { once: true });
+      document.body.appendChild(iframeHost);
+    });
+    const win = iframeHost.contentWindow as Window & typeof globalThis;
+    let added = 0;
+    const realAdd = win.addEventListener.bind(win);
+    win.addEventListener = ((type: string, ...rest: unknown[]) => {
+      if (type === "message") added++;
+      return (realAdd as (...a: unknown[]) => void)(type, ...rest);
+    }) as typeof win.addEventListener;
+
+    registerExampleSandbox({ tagName: "sf-sandbox-tt", document: win.document, customElementRegistry: win.customElements, htmlElementBase: win.HTMLElement });
+    const el = win.document.createElement("sf-sandbox-tt") as ExampleSandboxEl;
+    el.code = "console.log(1)";
+    win.document.body.appendChild(el);
+    const errors: string[] = [];
+    el.addEventListener("example-sandbox:error", (e) => errors.push(String((e as CustomEvent).detail.message)));
+    el.run();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/safe-fragment-sandbox/);
+    expect(added).toBe(0);
+    expect(el.querySelector("iframe")).toBeNull();
+    iframeHost.remove();
+  });
+
+  it("works end to end under an enforced Trusted Types CSP that allows the policy name", async () => {
+    const iframeHost = document.createElement("iframe");
+    iframeHost.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'; trusted-types safe-fragment-sandbox">`;
+    await new Promise<void>((resolve) => {
+      iframeHost.addEventListener("load", () => resolve(), { once: true });
+      document.body.appendChild(iframeHost);
+    });
+    const win = iframeHost.contentWindow as Window & typeof globalThis;
+    registerExampleSandbox({ tagName: "sf-sandbox-tt2", document: win.document, customElementRegistry: win.customElements, htmlElementBase: win.HTMLElement });
+    const el = win.document.createElement("sf-sandbox-tt2") as ExampleSandboxEl;
+    el.code = 'console.log("tt ok")';
+    win.document.body.appendChild(el);
+    const message = waitForEvent(el, "example-sandbox:message");
+    el.run();
+    expect(((await message).detail.args as string[]).join(" ")).toBe("tt ok");
+    el.run(); // a second run in the same window reuses the cached policy (no duplicate-policy error)
+    expect(((await waitForEvent(el, "example-sandbox:message")).detail.args as string[]).join(" ")).toBe("tt ok");
+    iframeHost.remove();
+  });
 });

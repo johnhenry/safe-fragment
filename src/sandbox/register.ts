@@ -4,6 +4,8 @@ import { SafeFragmentError } from "../errors.js";
 
 export interface RegisterExampleSandboxOptions {
   tagName?: string;
+  /** Trusted Types policy name used when the page enforces TT (default `"safe-fragment-sandbox"`); see `ExampleSandboxDeps.trustedTypesPolicyName`. */
+  trustedTypesPolicyName?: string;
   document?: Document;
   customElementRegistry?: CustomElementRegistry;
   htmlElementBase?: typeof HTMLElement;
@@ -28,6 +30,6 @@ export function registerExampleSandbox(options: RegisterExampleSandboxOptions = 
   const tagName = options.tagName ?? "example-sandbox";
   if (registry.get(tagName)) return;
 
-  const ElementClass = createExampleSandboxElementClass(HTMLElementBase);
+  const ElementClass = createExampleSandboxElementClass(HTMLElementBase, { trustedTypesPolicyName: options.trustedTypesPolicyName });
   registry.define(tagName, ElementClass);
 }
