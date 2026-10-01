@@ -3,6 +3,7 @@ import { deriveProfile, getProfile, registerProfile } from "../../src/policy/reg
 import { caseSeed, makeRng } from "./prng.js";
 import { addSeeds, allSeeds, generate } from "./grammar.js";
 import { EMAIL_BENIGN, EMAIL_HOSTILE } from "../fixtures/email-corpus.js";
+import { FOREIGN_BENIGN, FOREIGN_HOSTILE } from "../fixtures/foreign-corpus.js";
 import { checkCase, executionFindings, makeEnv, shrink, type Env, type Finding } from "./harness.js";
 
 /**
@@ -27,11 +28,19 @@ const SEED = numberFrom(env_.VITE_SF_FUZZ_SEED, 20261001);
 const ITERATIONS = numberFrom(env_.VITE_SF_FUZZ_ITERATIONS, 150);
 const ONLY = env_.VITE_SF_FUZZ_ONLY === undefined || env_.VITE_SF_FUZZ_ONLY === "" ? undefined : Number(env_.VITE_SF_FUZZ_ONLY);
 const REPLAY_CORPUS = env_.VITE_SF_FUZZ_CORPUS !== "0";
-addSeeds(...EMAIL_BENIGN.map((f) => f.input), ...EMAIL_HOSTILE.map((f) => f.input));
+addSeeds(
+  ...EMAIL_BENIGN.map((f) => f.input),
+  ...EMAIL_HOSTILE.map((f) => f.input),
+  ...FOREIGN_BENIGN.map((f) => f.input),
+  ...FOREIGN_HOSTILE.map((f) => f.input),
+);
 
 // A profile that allows some classes, so the class allowlist is fuzzed too (ui-v1 allows none).
 if (!getProfile("fuzz-ui-classes-v1")) registerProfile(deriveProfile("ui-v1", { name: "fuzz-ui-classes-v1", allowedClasses: ["user-*", "btn"] }));
-const PROFILES = ["article-v1", "ui-v1", "email-v1", "component-template-v1", "fuzz-ui-classes-v1"];
+// Opt-in SVG and MathML (static / presentation), with a class allowlist.
+if (!getProfile("fuzz-rich-v1"))
+  registerProfile(deriveProfile("article-v1", { name: "fuzz-rich-v1", svg: "static", mathml: "presentation", allowedClasses: ["user-*"] }));
+const PROFILES = ["article-v1", "ui-v1", "email-v1", "component-template-v1", "fuzz-ui-classes-v1", "fuzz-rich-v1"];
 const BATCH = 20;
 const MAX_REPORTED = 4;
 

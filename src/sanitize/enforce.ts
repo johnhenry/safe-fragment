@@ -3,6 +3,7 @@ import { isAllowedClassToken, matchCustomElement } from "../policy/profile.js";
 import type { SanitizationNote, IdPolicy } from "../types.js";
 import { checkUrl, hasScriptScheme } from "../policy/url.js";
 import { enforceForeignElement } from "./enforce-foreign.js";
+import { isOptedInForeignName } from "../policy/foreign.js";
 import { extractContentId, isSafeResolvedUrl, type CidResolver } from "../policy/cid.js";
 import { DROP_SUBTREE_ELEMENTS, HTML_NAMESPACE } from "./dangerous.js";
 
@@ -396,6 +397,8 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
         rewrittenUrls,
         snippet,
         splitTokens,
+        dropsSubtree: (t) => DROP_SUBTREE.has(t) || isProfileDropElement(profile, t),
+        allowsTag: (t) => t in profile.elements || (t.includes("-") && matchCustomElement(profile, t) !== undefined) || isOptedInForeignName(profile, t),
         breaksOut: attributeValueBreaksOut,
       });
       continue;
@@ -415,7 +418,12 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
     const allowedAttrs = builtinAttrs ?? customEntry?.attributes;
 
     if (allowedAttrs === undefined) {
-      if (DROP_SUBTREE.has(tag) || isProfileDropElement(profile, tag)) {
+      if (isOptedInForeignName(profile, tag)) {
+        // `<mi>`/`<path>` in HTML content, with SVG/MathML opted in: DOMPurify removes it with its content (a name that
+        // is only valid in foreign content), so enforceProfile does too and the engines agree (ADR 0010).
+        removedElements.push({ tag, reason: "element-dropped:foreign-name-in-html" });
+        el.remove();
+      } else if (DROP_SUBTREE.has(tag) || isProfileDropElement(profile, tag)) {
         removedElements.push({ tag, reason: "element-dropped:dangerous-container" });
         el.remove();
       } else {

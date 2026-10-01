@@ -36,6 +36,18 @@ export const DROP_SUBTREE_ELEMENTS: readonly string[] = Object.freeze([
   "frame",
   "frameset",
   "head",
+  // Foreign-content containers (ADR 0010). Their content is HTML inside SVG (`foreignobject`), MathML's HTML/TeX
+  // annotations, attribute-rewriting animation, or metadata text: promoting any of it by unwrapping is wrong. They
+  // can only be parsed as such inside <svg>/<math>, so an HTML-context element of the same name is a harmless unknown
+  // element that is now dropped with its content too, identically in every engine and in enforceProfile.
+  "foreignobject",
+  "annotation",
+  "annotation-xml",
+  "animate",
+  "animatetransform",
+  "animatemotion",
+  "set",
+  "metadata",
 ]);
 
 export const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";

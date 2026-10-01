@@ -314,3 +314,19 @@ export function isFontFamilyList(value: string): boolean {
   }
   return value.trim() !== "";
 }
+
+let svgLowerNames: ReadonlySet<string> | undefined;
+let mathLowerNames: ReadonlySet<string> | undefined;
+
+/**
+ * Whether `lowerTag` (an HTML-namespace element's lowercase name) is the name of an
+ * element the profile opted in to as SVG or MathML. DOMPurify, once such a name is in
+ * its allowlist, removes an HTML-namespace element carrying it (`<mi>` outside `<math>`)
+ * together with its content, instead of unwrapping it; enforceProfile does the same so
+ * the engines agree (ADR 0010).
+ */
+export function isOptedInForeignName(profile: { svg?: string; mathml?: string }, lowerTag: string): boolean {
+  svgLowerNames ??= new Set(Object.keys(SVG_ELEMENTS).map((n) => n.toLowerCase()));
+  mathLowerNames ??= new Set(Object.keys(MATHML_ELEMENTS).map((n) => n.toLowerCase()));
+  return (profile.svg === "static" && svgLowerNames.has(lowerTag)) || (profile.mathml === "presentation" && mathLowerNames.has(lowerTag));
+}

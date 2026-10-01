@@ -1,3 +1,5 @@
+import { normalize } from "./oracles.js";
+
 /**
  * Documented native-vs-DOMPurify divergences the fuzzer tolerates. Every entry
  * names a reason a reviewer can read in docs/review/known-divergences.md; an
@@ -34,5 +36,22 @@ export function divergenceReason(input: string, native: DocumentFragment, dompur
   const a = native.textContent ?? "";
   const b = dompurify.textContent ?? "";
   if (hasCommentLike(input) && b.length < a.length && isSubsequence(b, a)) return DIVERGENCE_OVERREMOVAL;
+  if (differsOnlyByUse(native, dompurify)) return DIVERGENCE_USE;
   return undefined;
+}
+
+/**
+ * D4: the native engine removes `<use>` (and what is inside it) unconditionally: the Sanitizer API's built-in baseline
+ * lists it, whatever the config says. DOMPurify keeps a same-fragment `<use>`. Tolerated only when the trees are equal
+ * once every `<use>` is taken out of both.
+ */
+export const DIVERGENCE_USE = "D4 native engine removes <use> unconditionally (Sanitizer API baseline)";
+
+function differsOnlyByUse(native: DocumentFragment, dompurify: DocumentFragment): boolean {
+  const strip = (f: DocumentFragment): string => {
+    const copy = f.cloneNode(true) as DocumentFragment;
+    for (const u of [...copy.querySelectorAll("use")]) u.remove();
+    return normalize(copy);
+  };
+  return strip(native) === strip(dompurify);
 }

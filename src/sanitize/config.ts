@@ -78,8 +78,10 @@ export function buildBaselineConfig(profile: ProfileDefinition): BaselineConfig 
   }
 
   return {
-    nativeAttributes: [...allowedAttributes, ...nativeExtra, ...(xlink ? [{ name: "href", namespace: XLINK_NAMESPACE }] : [])],
-    dropSubtreeElements: [...DROP_SUBTREE_ELEMENTS],
+    nativeAttributes: [...new Set([...allowedAttributes, ...nativeExtra]), ...(xlink ? [{ name: "href", namespace: XLINK_NAMESPACE }] : [])],
+    // `svg` and `math` are on the shared drop list; the native engine's removeElements matches them in the foreign
+    // namespace too, so an opted-in profile must take them off the engine's list (enforceProfile then decides).
+    dropSubtreeElements: DROP_SUBTREE_ELEMENTS.filter((tag) => !(tag === "svg" && profile.svg) && !(tag === "math" && profile.mathml)),
     allowedElements: [...allowedElements],
     allowedAttributes: [...allowedAttributes],
     allowCustomElements: profile.customElements.length > 0,

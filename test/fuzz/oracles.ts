@@ -11,6 +11,130 @@ import { parseSrcsetUrls } from "../../src/sanitize/enforce.js";
  */
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
+const SVG_NS = "http://www.w3.org/2000/svg";
+const MATH_NS = "http://www.w3.org/1998/Math/MathML";
+const XLINK_NS = "http://www.w3.org/1999/xlink";
+
+// Independent of src/policy/foreign.ts: a coarser, flat statement of "what static SVG / presentation MathML may contain".
+const SVG_OK = new Set([
+  "svg",
+  "g",
+  "defs",
+  "symbol",
+  "use",
+  "path",
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+  "text",
+  "tspan",
+  "textPath",
+  "title",
+  "desc",
+  "linearGradient",
+  "radialGradient",
+  "stop",
+  "clipPath",
+]);
+const MATH_OK = new Set([
+  "math",
+  "mrow",
+  "mi",
+  "mn",
+  "mo",
+  "ms",
+  "mtext",
+  "mspace",
+  "mfrac",
+  "msqrt",
+  "mroot",
+  "msub",
+  "msup",
+  "msubsup",
+  "munder",
+  "mover",
+  "munderover",
+  "mtable",
+  "mtr",
+  "mtd",
+  "mpadded",
+  "mphantom",
+  "menclose",
+  "mstyle",
+]);
+const FOREIGN_TEXT_ONLY = new Set(["title", "desc", "mi", "mn", "mo", "ms", "mtext"]);
+const SVG_ATTR_OK = new Set(
+  "id class lang role aria-label aria-hidden aria-labelledby aria-describedby fill stroke color fill-opacity fill-rule stroke-width stroke-linecap stroke-linejoin stroke-miterlimit stroke-dasharray stroke-dashoffset stroke-opacity opacity clip-path clip-rule transform display visibility viewBox width height preserveAspectRatio x y pathLength d cx cy r rx ry x1 y1 x2 y2 points dx dy rotate textLength lengthAdjust text-anchor font-size font-weight font-style font-family dominant-baseline letter-spacing word-spacing text-decoration startOffset method spacing side gradientUnits spreadMethod gradientTransform href xlink:href fx fy fr offset stop-color stop-opacity clipPathUnits".split(
+    " ",
+  ),
+);
+const MATH_ATTR_OK = new Set(
+  "id class dir mathvariant mathsize mathcolor mathbackground displaystyle scriptlevel display fence separator stretchy symmetric largeop movablelimits accent form lspace rspace minsize maxsize width height depth linethickness accentunder align columnalign rowalign columnspacing rowspacing columnspan rowspan voffset notation".split(
+    " ",
+  ),
+);
+
+/** Whether a foreign attribute value is within the only shapes allowed: plain tokens, rgb/hsl, a transform list, or url(#id) / #id of this fragment. */
+function foreignValueOk(name: string, value: string, idPolicy: string | undefined): boolean {
+  if (/[\\"';:/<>=&{}*@!?^`|~\u0000-\u0008\u000b\u000e-\u001f]/.test(value) && !(name === "href" || name === "xlink:href")) return false;
+  const prefix = idPolicy === "keep-in-shadow" ? "" : ID_PREFIX;
+  if (name === "href" || name === "xlink:href") return new RegExp(`^#${prefix}[A-Za-z0-9_.-]+$`).test(value);
+  const calls = [...value.matchAll(/([A-Za-z]*)\(/g)].map((m) => m[1]!.toLowerCase());
+  const allowedCalls = new Set(["rgb", "rgba", "hsl", "hsla", "url", "matrix", "translate", "scale", "rotate", "skewx", "skewy"]);
+  if (calls.some((c) => !allowedCalls.has(c))) return false;
+  for (const m of value.matchAll(/url\(([^)]*)\)/gi)) if (!new RegExp(`^#${prefix}[A-Za-z0-9_.-]+$`).test(m[1]!.trim())) return false;
+  return true;
+}
+
+function foreignViolations(el: Element, profile: ProfileDefinition, opts: ConformanceOptions): string[] {
+  const out: string[] = [];
+  const ns = el.namespaceURI;
+  const tag = el.localName;
+  const svg = ns === SVG_NS;
+  if (svg && !profile.svg) return [`<${tag}> SVG element in a profile without svg`];
+  if (!svg && !profile.mathml) return [`<${tag}> MathML element in a profile without mathml`];
+  if (!(svg ? SVG_OK : MATH_OK).has(tag)) out.push(`<${tag}> foreign element not on the allowlist`);
+  const parent = el.parentNode;
+  const pns = parent && parent.nodeType === 1 ? (parent as Element).namespaceURI : null;
+  const root = svg ? "svg" : "math";
+  if (tag === root) {
+    if ((pns === SVG_NS || pns === MATH_NS) && !(svg && pns === SVG_NS)) out.push(`<${tag}> root inside the other foreign namespace`);
+  } else if (pns !== ns) out.push(`<${tag}> foreign element outside its own namespace's parent`);
+  if (FOREIGN_TEXT_ONLY.has(tag) && [...el.childNodes].some((c) => c.nodeType === 1)) out.push(`<${tag}> text-only element has element children`);
+  for (const attr of el.attributes) {
+    const name = attr.namespaceURI === XLINK_NS && attr.localName === "href" ? "xlink:href" : attr.name;
+    if (attr.namespaceURI !== null && name !== "xlink:href") out.push(`<${tag}> namespaced attribute ${attr.name}`);
+    if (name === "xlink:href" && !svg) out.push(`<${tag}> xlink:href on MathML`);
+    if (!(svg ? SVG_ATTR_OK : MATH_ATTR_OK).has(name)) out.push(`<${tag}> attribute ${name} not allowed`);
+    if (name.toLowerCase().startsWith("on") || name === "style") out.push(`<${tag}> ${name} attribute`);
+    if (name === "class") {
+      const allow = profile.allowedClasses ?? [];
+      for (const token of attr.value.split(/[\t\n\f\r ]+/)) {
+        if (!allow.some((e) => (e.endsWith("*") ? token.startsWith(e.slice(0, -1)) : token === e)))
+          out.push(`<${tag}> class token ${JSON.stringify(token)} not allowed`);
+      }
+      continue;
+    }
+    if (name === "id") {
+      if (opts.idPolicy !== "keep-in-shadow" && !attr.value.startsWith(ID_PREFIX)) out.push(`<${tag}> unprefixed id`);
+      continue;
+    }
+    if (name === "d" || name === "points") {
+      if (!/^[MmLlHhVvCcSsQqTtAaZz0-9eE.,+\- \t\n\f\r]*$/.test(attr.value)) out.push(`<${tag}> ${name} has characters outside the grammar`);
+      continue;
+    }
+    if (name === "font-family") {
+      if (!/^[A-Za-z0-9 _.,-]+$/.test(attr.value)) out.push(`<${tag}> font-family outside the grammar`);
+      continue;
+    }
+    if (name === "aria-labelledby" || name === "aria-describedby") continue;
+    if (!foreignValueOk(name, attr.value, opts.idPolicy)) out.push(`<${tag}> ${name}=${JSON.stringify(attr.value)} outside the value grammar`);
+  }
+  return out;
+}
 const ID_PREFIX = "user-content-";
 const URL_ATTRS = new Set([
   "src",
@@ -38,19 +162,28 @@ function squeeze(value: string): string {
   let out = "";
   for (const ch of value) {
     const c = ch.codePointAt(0)!;
-    if (
+    const ignorable =
       c <= 0x20 ||
       c === 0xa0 ||
+      c === 0xad ||
+      c === 0x34f ||
+      c === 0x61c ||
+      c === 0x115f ||
+      c === 0x1160 ||
       c === 0x1680 ||
-      c === 0x180e ||
+      c === 0x17b4 ||
+      c === 0x17b5 ||
+      (c >= 0x180b && c <= 0x180f) ||
       (c >= 0x2000 && c <= 0x200f) ||
       (c >= 0x2028 && c <= 0x202f) ||
-      c === 0x205f ||
+      (c >= 0x205f && c <= 0x206f) ||
       c === 0x3000 ||
-      c === 0xfeff
-    )
-      continue;
-    out += ch.toLowerCase();
+      c === 0x3164 ||
+      (c >= 0xfe00 && c <= 0xfe0f) ||
+      c === 0xfeff ||
+      c === 0xffa0 ||
+      (c >= 0xe0000 && c <= 0xe0fff);
+    if (!ignorable) out += ch.toLowerCase();
   }
   return out;
 }
@@ -100,10 +233,16 @@ export function conformance(root: Node, profile: ProfileDefinition, opts: Confor
     const el = n as Element;
     const tag = el.localName;
     const ns = el.namespaceURI ?? "";
+    if (ns === SVG_NS || ns === MATH_NS) {
+      out.push(...foreignViolations(el, profile, opts));
+      continue;
+    }
     if (ns !== HTML_NS && !(opts.allowedNamespaces?.has(ns) ?? false)) {
       out.push(`foreign-namespace element <${tag}> (${ns})`);
       continue;
     }
+    const parentNs = el.parentElement?.namespaceURI;
+    if (parentNs && parentNs !== HTML_NS) out.push(`HTML element <${tag}> inside a foreign element`);
     const allowed = ns === HTML_NS ? (profile.elements[tag] ?? (tag.includes("-") ? matchCustomElement(profile, tag)?.attributes : undefined)) : undefined;
     if (ns === HTML_NS && allowed === undefined) {
       out.push(`element <${tag}> not in profile ${profile.name}`);

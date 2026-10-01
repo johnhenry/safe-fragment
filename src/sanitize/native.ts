@@ -119,7 +119,8 @@ export function sanitizeWithNative(doc: Document, html: string, baseline: Baseli
   const inert = doc.implementation.createHTMLDocument("");
   const container = inert.createElement("div") as unknown as SetHTMLCapableElement;
   const config: NativeSanitizerConfig = {
-    removeElements: baseline.dropSubtreeElements,
+    // foreignObject is camelCase in the DOM and the engine matches case-sensitively; enforceProfile drops it either way.
+    removeElements: [...baseline.dropSubtreeElements, "foreignObject", "animateTransform", "animateMotion"],
     attributes: baseline.nativeAttributes,
     comments: false,
     dataAttributes: false,

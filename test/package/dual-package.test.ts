@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { readFileSync } from "node:fs";
 import type * as Api from "../../src/index.js";
 
 /**
@@ -66,6 +67,14 @@ describe("dual package (ESM + CJS builds loaded together)", async () => {
       expect.unreachable();
     } catch (error) {
       expect(esm.isSafeFragmentError(error) && error.code).toBe("INVALID_PROFILE");
+    }
+  });
+
+  it("both declaration files type document.createElement('safe-fragment') (appended by scripts/append-dts.mjs; JSR refuses global augmentations in src)", () => {
+    for (const file of ["../../dist/index.d.ts", "../../dist/index.d.cts"]) {
+      const text = readFileSync(resolve(here, file), "utf8");
+      expect(text, file).toContain("declare global");
+      expect(text, file).toContain('"safe-fragment": SafeFragmentElement');
     }
   });
 });

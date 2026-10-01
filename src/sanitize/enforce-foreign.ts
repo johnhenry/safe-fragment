@@ -32,16 +32,21 @@ export interface ForeignContext {
   rewrittenUrls: SanitizationNote[];
   snippet(value: string): string;
   splitTokens(value: string): string[];
+  /** Whether a disallowed element of this (lowercase) name is dropped with its subtree rather than unwrapped (src/sanitize/dangerous.ts). */
+  dropsSubtree(tag: string): boolean;
+  /** Whether the engines' element allowlist contains this lowercase name (profile elements, custom elements, opted-in SVG/MathML names). */
+  allowsTag(tag: string): boolean;
   breaksOut(value: string): boolean;
 }
 
 /**
  * Enforces one element outside the HTML namespace (ADR 0010). Returns `true` when the
  * element stays (its attributes already enforced in place) and `false` when it was
- * removed with its whole subtree. Anything not on the profile's SVG/MathML allowlist,
- * in the wrong place, or carrying an element where only text may go, is removed with
- * everything under it: foreign content never gets the "unwrap" treatment, because
- * what is inside a disallowed foreign element may be parsed by different rules.
+ * removed (or unwrapped). Elements of a foreign namespace the profile did not opt in to,
+ * and elements in the wrong place, go with their whole subtree. An opted-in namespace's
+ * disallowed element follows ADR 0004: dropped with its subtree when it is a container
+ * of non-presentation content, unwrapped otherwise. Element descendants of a text-only
+ * integration point (`<svg><title>`, `<mtext>`) are flattened to their text.
  */
 export function enforceForeignElement(el: Element, ctx: ForeignContext): boolean {
   const ns = el.namespaceURI;
@@ -49,7 +54,21 @@ export function enforceForeignElement(el: Element, ctx: ForeignContext): boolean
   const svg = ns === SVG_NAMESPACE && ctx.profile.svg === "static";
   const math = ns === MATHML_NAMESPACE && ctx.profile.mathml === "presentation";
   const spec = svg ? SVG_ELEMENTS[tag] : math ? MATHML_ELEMENTS[tag] : undefined;
-  if (spec === undefined) return drop(el, tag, "element-dropped:foreign-namespace", ctx);
+  if (spec === undefined) {
+    // Not opted in at all: every foreign element goes with its subtree (ADR 0004).
+    if (!svg && !math) return drop(el, tag, "element-dropped:foreign-namespace", ctx);
+    // Opted in, but not an allowed element: the same rule as HTML (ADR 0004). Containers whose content is not
+    // presentation (foreignObject, script, style, animation, annotations, metadata) drop with their subtree,
+    // everything else (switch, mask, a, maction, ...) is unwrapped and its allowed descendants stay.
+    // A name the engines' allowlist contains (an HTML profile element such as `caption`, `figure`, `th`) is valid in no
+    // foreign namespace: DOMPurify's namespace check removes it with its content, so enforceProfile does too and the
+    // engines agree (ADR 0010).
+    if (ctx.dropsSubtree(tag.toLowerCase())) return drop(el, tag, "element-dropped:dangerous-container", ctx);
+    if (ctx.allowsTag(tag.toLowerCase())) return drop(el, tag, "element-dropped:foreign-name-not-valid-here", ctx);
+    ctx.removedElements.push({ tag, reason: "element-unwrapped:not-in-profile" });
+    el.replaceWith(...el.childNodes);
+    return false;
+  }
 
   // Placement. A foreign root (<svg>, <math>) sits in HTML content (a nested <svg> may also sit in SVG); every other
   // foreign element must be a child of its own namespace's element.
@@ -63,11 +82,22 @@ export function enforceForeignElement(el: Element, ctx: ForeignContext): boolean
     return drop(el, tag, "element-dropped:foreign-misplaced", ctx);
   }
 
-  // Text integration points hold text only.
+  // Text integration points hold text only: element descendants never stay. DOMPurify removes a descendant its allowlist
+  // contains (with its content) and unwraps one it does not; raw-text/dangerous containers are dropped by every engine.
+  // enforceProfile follows the same three-way rule so the engines agree (ADR 0010).
   const textOnly = svg ? SVG_TEXT_ONLY.has(tag) : MATHML_TEXT_ONLY.has(tag);
   if (textOnly) {
-    for (const child of el.childNodes) {
-      if (child.nodeType === 1) return drop(el, tag, "element-dropped:text-only-container", ctx);
+    for (const child of [...el.querySelectorAll("*")]) {
+      if (!el.contains(child)) continue;
+      const childTag = child.localName;
+      const lower = childTag.toLowerCase();
+      if (ctx.dropsSubtree(lower) || ctx.allowsTag(lower)) {
+        ctx.removedElements.push({ tag: childTag, reason: "element-dropped:text-only-container" });
+        child.remove();
+      } else {
+        ctx.removedElements.push({ tag: childTag, reason: "element-unwrapped:text-only-container" });
+        child.replaceWith(...child.childNodes);
+      }
     }
   }
 
