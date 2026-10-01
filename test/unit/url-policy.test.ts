@@ -69,4 +69,42 @@ describe("checkUrl", () => {
     expect(checkUrl("/relative/path", []).allowed).toBe(false);
     expect(checkUrl("https://example.com/", []).allowed).toBe(false);
   });
+
+  describe("authority-bearing relative URLs resolve against the real document base", () => {
+    const HTTPS_ONLY = ["https:"];
+    const REL_AND_HTTPS = ["relative", "https:"];
+    const variants = ["//evil.example/x", "\\\\evil.example/x", "/\\evil.example/x", "\\/evil.example/x", "  //evil.example/x", "\t//evil.example/x"];
+
+    it.each(variants)("%j on an http page is http:, rejected by an https-only profile", (value) => {
+      const r = checkUrl(value, REL_AND_HTTPS, "http://page.example/doc");
+      expect(r.scheme).toBe("http:");
+      expect(r.allowed).toBe(false);
+    });
+
+    it.each(variants)("%j on an https page is https:", (value) => {
+      const r = checkUrl(value, HTTPS_ONLY, "https://page.example/doc");
+      expect(r.scheme).toBe("https:");
+      expect(r.allowed).toBe(true);
+    });
+
+    it.each(variants)("%j is never classified relative", (value) => {
+      expect(checkUrl(value, ["relative"], "https://page.example/").allowed).toBe(false);
+      expect(checkUrl(value, ["relative"]).allowed).toBe(false);
+    });
+
+    it("fails closed when the base cannot resolve authority-bearing references (about:blank, data:)", () => {
+      expect(checkUrl("//evil.example/x", REL_AND_HTTPS, "about:blank")).toEqual({ allowed: false, scheme: "unparseable" });
+      expect(checkUrl("//evil.example/x", REL_AND_HTTPS, "not a url")).toEqual({ allowed: false, scheme: "unparseable" });
+    });
+
+    it("plain relative references stay relative whatever the base", () => {
+      expect(checkUrl("/a/b", ["relative"], "http://page.example/").allowed).toBe(true);
+      expect(checkUrl("a/b", ["relative"], "about:blank").allowed).toBe(true);
+    });
+
+    it("the real document's base (http test page) rejects // under the https-only allowlist", () => {
+      expect(location.protocol).toBe("http:");
+      expect(checkUrl("//evil.example/x", HTTPS_ONLY, document.baseURI).allowed).toBe(false);
+    });
+  });
 });

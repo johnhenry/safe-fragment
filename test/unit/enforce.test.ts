@@ -100,6 +100,14 @@ describe("enforceProfile", () => {
     });
   });
 
+  it("an http page's protocol-relative href is judged as http: (not https:) and removed under the https-only default profile", () => {
+    const frag = fragmentFromHtml('<a href="//evil.example/x">a</a><img src="\\\\evil.example/y">');
+    const result = enforceProfile(frag, ARTICLE_V1, new Map(), { baseUrl: "http://page.example/" });
+    expect(frag.querySelector("a")!.hasAttribute("href")).toBe(false);
+    expect(frag.querySelector("img")!.hasAttribute("src")).toBe(false);
+    expect(result.rewrittenUrls.map((n) => n.reason)).toEqual(["disallowed-url-scheme:http:", "disallowed-url-scheme:http:"]);
+  });
+
   it("strips the style attribute unconditionally (no v1 profile allows it)", () => {
     const frag = fragmentFromHtml('<p style="color:red">x</p>');
     enforceProfile(frag, ARTICLE_V1, new Map());

@@ -100,6 +100,11 @@ function namespaceIds(el: Element): void {
   }
 }
 
+export interface EnforceOptions {
+  /** URL of the document the fragment will be inserted into (`document.baseURI`); protocol-relative URLs inherit their scheme from it. */
+  baseUrl?: string;
+}
+
 export interface EnforceResult {
   removedElements: SanitizationNote[];
   removedAttributes: SanitizationNote[];
@@ -121,6 +126,7 @@ export function enforceProfile(
   fragment: DocumentFragment,
   profile: ProfileDefinition,
   customElements: ReadonlyMap<string, CustomElementAllowlistEntry>,
+  options: EnforceOptions = {},
 ): EnforceResult {
   const removedElements: SanitizationNote[] = [];
   const removedAttributes: SanitizationNote[] = [];
@@ -183,7 +189,7 @@ export function enforceProfile(
       }
 
       if (profile.urlAttributes.includes(name)) {
-        const result = checkUrl(attr.value, profile.urlSchemes);
+        const result = checkUrl(attr.value, profile.urlSchemes, options.baseUrl);
         if (!result.allowed) {
           rewrittenUrls.push({ tag, attribute: name, reason: `disallowed-url-scheme:${result.scheme}`, snippet: snippet(attr.value) });
           el.removeAttribute(attr.name);

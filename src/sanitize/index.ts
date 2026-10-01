@@ -76,7 +76,7 @@ export async function sanitize(
     engine = "dompurify";
   }
 
-  const { removedElements, removedAttributes, rewrittenUrls } = enforceProfile(fragment, profile, customElements);
+  const { removedElements, removedAttributes, rewrittenUrls } = enforceProfile(fragment, profile, customElements, { baseUrl: doc.baseURI });
 
   const outputLength = serializedLength(fragment);
 

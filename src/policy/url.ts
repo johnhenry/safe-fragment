@@ -26,29 +26,49 @@ export interface UrlCheckResult {
   scheme: string;
 }
 
+const HIERARCHICAL_SCHEMES = new Set(["http:", "https:", "ws:", "wss:", "ftp:", "file:"]);
+
+/** Parses `base` and returns it only if relative references (including protocol-relative ones) can genuinely resolve against it. */
+function usableBase(base: string | URL | undefined): URL | null {
+  if (base === undefined) return PROBE_URL;
+  try {
+    const parsed = typeof base === "string" ? new URL(base) : base;
+    return HIERARCHICAL_SCHEMES.has(parsed.protocol) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Checks whether `rawValue` (an attribute value taken verbatim from
  * markup) is permitted under `allowedSchemes`.
+ *
+ * `base` is the URL of the document the markup will be inserted into
+ * (`document.baseURI`). It only matters for authority-bearing relative
+ * references -- protocol-relative `//host/x` and its backslash variants
+ * (`\\host`, `/\\host`, `\\/host`; the WHATWG parser treats `\` as `/` for
+ * special schemes) -- which inherit their *scheme* from the document, so an
+ * `http:` page turns `//evil.example/x` into `http://evil.example/x`, never
+ * `https:`. When `base` is omitted a fixed HTTPS probe is used (pure-function
+ * callers, tests); when `base` is supplied but not a usable hierarchical URL
+ * (`about:blank`, `data:`, unparseable) an authority-bearing reference
+ * cannot be resolved and is rejected as `"unparseable"` (fail closed).
  *
  * 1. Try `new URL(rawValue)` with no base. Success means the value is
  *    genuinely absolute and its `.protocol` is authoritative -- covers
  *    `javascript:`, `data:`, `vbscript:`, `file:`, `https:`, etc,
  *    including whitespace/control-character-obfuscated variants (the
  *    parser normalizes those before recognizing the scheme).
- * 2. Otherwise, resolve against a fixed HTTPS probe base and compare both
- *    scheme AND host to the probe's own. Same scheme + same host means the
- *    value genuinely carried neither (a same-document path/query/fragment
- *    reference) -- checked against the `"relative"` allowance. A
- *    *different* host (protocol-relative `//host/path`, which inherits
- *    only the scheme, not the host, from whatever base it resolves
- *    against) is never treated as `"relative"`, even though it too has no
- *    literal scheme of its own -- it is checked against its resolved
- *    (inherited) scheme instead, since that is what it would actually
- *    become in a real document.
- * 3. Anything that fails to parse even against the probe base is rejected
- *    outright.
+ * 2. Otherwise, resolve against the fixed probe and compare scheme AND
+ *    host: unchanged means the value carried neither (a same-document
+ *    path/query/fragment reference), checked against the `"relative"`
+ *    allowance.
+ * 3. A different host means an authority-bearing reference; it is
+ *    re-resolved against the real `base` and judged by the scheme it
+ *    actually inherits there, never by `"relative"`.
+ * 4. Anything that fails to parse is rejected outright.
  */
-export function checkUrl(rawValue: string, allowedSchemes: readonly string[]): UrlCheckResult {
+export function checkUrl(rawValue: string, allowedSchemes: readonly string[], base?: string | URL): UrlCheckResult {
   const trimmed = rawValue.trim();
   if (trimmed === "") {
     return { allowed: allowedSchemes.includes(RELATIVE), scheme: RELATIVE };
@@ -61,21 +81,25 @@ export function checkUrl(rawValue: string, allowedSchemes: readonly string[]): U
     // Not parseable as absolute -- fall through to relative resolution.
   }
 
-  let resolved: URL;
+  let probed: URL;
   try {
-    resolved = new URL(trimmed, PROBE_BASE);
+    probed = new URL(trimmed, PROBE_BASE);
   } catch {
     return { allowed: false, scheme: "unparseable" };
   }
 
-  const isSameDocumentReference = resolved.protocol === PROBE_URL.protocol && resolved.host === PROBE_URL.host;
-  if (isSameDocumentReference) {
+  if (probed.protocol === PROBE_URL.protocol && probed.host === PROBE_URL.host) {
     return { allowed: allowedSchemes.includes(RELATIVE), scheme: RELATIVE };
   }
 
-  // Carries a foreign host (protocol-relative "//host/path", or otherwise
-  // resolves off-origin) -- not a same-document reference. Judge it by the
-  // scheme it actually resolves to, never by "relative".
+  const realBase = usableBase(base);
+  if (!realBase) return { allowed: false, scheme: "unparseable" };
+  let resolved: URL;
+  try {
+    resolved = new URL(trimmed, realBase);
+  } catch {
+    return { allowed: false, scheme: "unparseable" };
+  }
   return { allowed: allowedSchemes.includes(resolved.protocol), scheme: resolved.protocol };
 }
 
