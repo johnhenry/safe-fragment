@@ -39,6 +39,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "prepare": "node scripts/prepare.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
