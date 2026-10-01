@@ -88,6 +88,22 @@ describe("srcset / imagesrcset: every candidate is checked", () => {
     }
   });
 
+  it("the whole value is also checked as one URL, so whitespace inside a scheme cannot split it into harmless candidates", () => {
+    // As srcset, "java\tscript:alert(1)" parses into the URL "java" plus a
+    // descriptor, but the attribute value read as a single URL (as a custom
+    // element might) is javascript: once the URL parser strips the tab.
+    for (const bad of ["java\tscript:alert(1)", "java\nscript:alert(1) 1x", "https://ok.example/a.png 1x, java\tscript:alert(1)"]) {
+      for (const [tag, attr] of [["img", "srcset"], ["my-card", "srcset"], ["my-card", "ping"]] as const) {
+        const frag = document.createDocumentFragment();
+        const el = document.createElement(tag);
+        el.setAttribute(attr, bad);
+        frag.append(el);
+        enforceProfile(frag, tag === "img" ? withSrcset : customProfile);
+        expect(el.hasAttribute(attr), `${tag} ${attr}=${JSON.stringify(bad)}`).toBe(false);
+      }
+    }
+  });
+
   it("imagesrcset is checked as well", () => {
     const p = deriveProfile(article, { name: "imagesrcset-test-v1", version: 1, addElements: { img: ["imagesrcset"] } });
     const frag = fragmentFromHtml('<img imagesrcset="javascript:alert(1) 1x">');

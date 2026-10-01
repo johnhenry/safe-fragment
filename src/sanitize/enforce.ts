@@ -114,8 +114,16 @@ function checkUrlAttribute(
   baseUrl: string | undefined,
 ): { allowed: true } | { allowed: false; reason: string } {
   // srcset/imagesrcset hold many candidates, ping a whitespace-separated list:
-  // EVERY url must pass, or the whole attribute goes.
-  const candidates = name === "srcset" || name === "imagesrcset" ? parseSrcsetUrls(value) : name === "ping" ? splitOnWhitespace(value) : [value];
+  // EVERY url must pass, or the whole attribute goes. The whole value, and for
+  // srcset each comma-separated segment, is checked as one URL too: splitting
+  // on whitespace turns "java\tscript:x" into the harmless candidate "java",
+  // but the URL parser strips the tab, so code that reads the attribute as a
+  // single URL (or splits it on commas itself, as a custom element might)
+  // would get javascript:.
+  const isSrcset = name === "srcset" || name === "imagesrcset";
+  const multi = isSrcset ? parseSrcsetUrls(value) : name === "ping" ? splitOnWhitespace(value) : null;
+  const segments = isSrcset ? value.split(",").map((s) => s.trim()).filter((s) => s !== "") : [];
+  const candidates = multi ? [...multi, ...segments, value] : [value];
   for (const candidate of candidates) {
     const result = checkUrl(candidate, profile.urlSchemes, baseUrl);
     if (!result.allowed) return { allowed: false, reason: `disallowed-url-scheme:${result.scheme}` };

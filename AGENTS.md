@@ -11,7 +11,7 @@ Same order as CI (`.github/workflows/ci.yml`); match it locally.
 1. `npm run lint`
 2. `npm run typecheck` (covers `src/`, `test/`, `examples/`)
 3. `npm run build`
-4. `npm test` -- all three browsers (Firefox may not launch in a sandbox: `SF_BROWSERS=chromium,webkit npm test`, and say so). Suites that can skip must show their skips with a reason: the native-vs-DOMPurify equivalence suite skips (loudly, in the title) where no `setHTML` exists. 595 tests in 24 files on Chromium at last count (WebKit: 412 run + 62 loud skips of the native-only suites); the equivalence/benign/XSS corpora run per engine.
+4. `npm test` -- all three browsers (Firefox may not launch in a sandbox: `SF_BROWSERS=chromium,webkit npm test`, and say so). Suites that can skip must show their skips with a reason: the native-vs-DOMPurify equivalence suite skips (loudly, in the title) where no `setHTML` exists. 596 tests in 24 files on Chromium at last count (WebKit: 413 run + 62 loud skips of the native-only suites); the equivalence/benign/XSS corpora run per engine.
 5. `npm run test:dist` (Node, 5 tests: ESM + CJS builds load together and share state; the committed HEAD installs as a git dependency into a scratch project with a working dist, needs network) and `npm run examples` (built examples smoke test)
 6. `npm pack --dry-run` -- read the file list, not the exit code (`dist/index.d.ts` for ESM, `dist/index.d.cts` for CJS; `exports` must point each condition at its own).
 7. A genuinely fresh clone: `git clone . /tmp/safe-fragment-verifyN && cd $_ && npm ci && npm run build && SF_BROWSERS=chromium,webkit npm test`.
