@@ -216,7 +216,7 @@ All events bubble and are namespaced `safe-fragment:*`:
 The package ships types for the element: the `SafeFragmentElement` interface,
 a `SafeFragmentEventMap` so `el.addEventListener("safe-fragment:render", (e) => e.detail.report)`
 is typed, and an `HTMLElementTagNameMap` augmentation (`document.createElement("safe-fragment")`
-returns a `SafeFragmentElement` after `registerSafeFragment()`). The class itself is
+returns a `SafeFragmentElement` after `registerSafeFragment()`; appended to the built `.d.ts` files, not present in the TypeScript source, so the package can be published to JSR). The class itself is
 exported as `createSafeFragmentElementClass(HTMLElement, deps)` and
 `getSafeFragmentElementClass()`.
 
@@ -224,13 +224,20 @@ exported as `createSafeFragmentElementClass(HTMLElement, deps)` and
 
 Full detail: [docs/profiles.md](docs/profiles.md).
 
-| Profile                 | Status                                                      | Summary                                                                                                                                   |
-| ----------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `plain-text-v1`         | Fully implemented, tested                                   | No HTML parsing at all -- `textContent` only.                                                                                             |
-| `article-v1`            | Fully implemented, tested                                   | Rich read-mostly content: prose, headings, lists, tables, links, images.                                                                  |
-| `ui-v1`                 | Fully implemented, tested                                   | Layout/interactive elements, `data-action` delegation, forced `type="button"`. Derive a profile to add custom elements.                   |
-| `component-template-v1` | Fully implemented, tested                                   | `ui-v1` plus `<slot>` and `part`/`slot`/`exportparts`, for a web component's template. Opt-in `idPolicy: "keep-in-shadow"`. No `<style>`. |
-| `email-v1`              | **Scaffold** -- see [Known limitations](#known-limitations) | Restrictive table-layout-friendly subset; blocks relative auto-loading URLs; no `cid:`/VML/MSO-comment handling yet.                      |
+| Profile                 | Status                                                    | Summary                                                                                                                                                           |
+| ----------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plain-text-v1`         | Fully implemented, tested                                 | No HTML parsing at all -- `textContent` only.                                                                                                                     |
+| `article-v1`            | Fully implemented, tested                                 | Rich read-mostly content: prose, headings, lists, tables, links, images.                                                                                          |
+| `ui-v1`                 | Fully implemented, tested                                 | Layout/interactive elements, `data-action` delegation, forced `type="button"`. No classes by default (`allowedClasses`). Derive a profile to add custom elements. |
+| `component-template-v1` | Fully implemented, tested                                 | `ui-v1` plus `<slot>` and `part`/`slot`/`exportparts`, for a web component's template. Opt-in `idPolicy: "keep-in-shadow"`. No `<style>`.                         |
+| `email-v1`              | Implemented, email corpus; not yet independently reviewed | Table-layout subset with the legacy layout attributes; `cid:` images through your `resolveCid`; MSO comments and VML removed; blocks relative auto-loading URLs.  |
+
+SVG and MathML are **opt-in** profile options, off in every built-in:
+`svg: "static"` (shapes, paths, text, gradients, same-fragment `use`) and
+`mathml: "presentation"` (presentation elements only). `class` is an
+allowlist, `allowedClasses`, and `ui-v1` allows none. See
+[docs/profiles.md](docs/profiles.md#svg-and-mathml-opt-in) and
+[ADR 0010](docs/adr/0010-svg-and-mathml-opt-in.md) / [ADR 0011](docs/adr/0011-class-allowlist.md).
 
 The built-ins are frozen and versioned (`name`, `version`); nothing mutates
 them. Register your own, or derive one from a built-in:
@@ -299,7 +306,7 @@ const sync = sanitizeToFragmentSync(untrustedHtml, { profile: "article-v1" });
 ```
 
 Same pipeline, same guarantees, same `SanitizationReport`; options are
-`{ profile, document?, maxInputLength?, baseUrl?, idPolicy?, loadDOMPurify? }` (`idPolicy: "keep-in-shadow"` keeps author ids and is safe only if you insert the fragment into a shadow root; see [docs/profiles.md](docs/profiles.md#ids-inside-a-shadow-root)). The sync
+`{ profile, document?, maxInputLength?, baseUrl?, idPolicy?, resolveCid?, loadDOMPurify? }` (`idPolicy: "keep-in-shadow"` keeps author ids and is safe only if you insert the fragment into a shadow root; see [docs/profiles.md](docs/profiles.md#ids-inside-a-shadow-root). `resolveCid` maps `cid:` content-ids to URLs for `email-v1`; the library never fetches them, see [docs/profiles.md](docs/profiles.md#email-v1)). The sync
 variant works only when the native engine exists or DOMPurify was already
 prepared; otherwise it throws `SANITIZER_NOT_READY` -- it fails closed. This is
 the entry point for template systems that need a sanitizer hook. The report
@@ -407,7 +414,8 @@ launch in the maintainer's sandbox), including the adversarial XSS corpus and
 a benign-content corpus compared across both sanitization engines:
 
 - The sanitizer pipeline (both engines, `enforceProfile`, rebuild), the report, and the public `sanitizeToFragment` API.
-- `plain-text-v1`, `article-v1`, `ui-v1`, `component-template-v1`; custom profiles via `registerProfile`.
+- `plain-text-v1`, `article-v1`, `ui-v1`, `component-template-v1`, `email-v1` (with its corpus); opt-in static SVG and presentation MathML (both engines compared, with an adversarial namespace-confusion corpus); the class allowlist; custom profiles via `registerProfile`.
+- A seeded mutation-XSS differential fuzzer (`test/fuzz/`, [the reviewer packet](docs/review/README.md#the-fuzzer)): small deterministic budget in `npm test`, `npm run fuzz` for long runs.
 - `<safe-fragment>`'s lifecycle, `render()` results, events, shadow/light scope, `loading="lazy"`.
 - The `src` fetch capability model.
 - `<example-sandbox>`, including a direct isolation-proof test and Trusted Types support.
@@ -415,13 +423,14 @@ a benign-content corpus compared across both sanitization engines:
 Known gaps (each has an issue):
 
 - **No independent security review yet** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)). Do not release or rely on this for hostile content before it.
-- **`email-v1` is a scaffold**: `cid:`, Outlook VML and MSO conditional comments are unhandled, and it has no email-specific corpus ([safe-fragment#2](https://github.com/johnhenry/safe-fragment/issues/2)).
-- **No SVG/MathML in any profile** ([safe-fragment#3](https://github.com/johnhenry/safe-fragment/issues/3)).
+- **`email-v1` has no CSS**: inline `style=` and `<style>` are how mail is styled, and both are unsupported, so a "hidden" preheader becomes visible and CSS colours are lost; remote `https:` images load (tracking pixels) unless you derive a profile without `https:` ([ADR 0009](docs/adr/0009-email-v1.md), [safe-fragment#2](https://github.com/johnhenry/safe-fragment/issues/2)).
+- **SVG and MathML are opt-in and partial** ([ADR 0010](docs/adr/0010-svg-and-mathml-opt-in.md), [safe-fragment#3](https://github.com/johnhenry/safe-fragment/issues/3)): no animation, `image`, `foreignObject`, filters or `style`; and **`<use>` is removed by the native engine** (Chromium) while DOMPurify keeps a same-fragment one, so it works only on Safari/fallback.
+- **Parsing hostile input reports CSP violations in Chromium** (`style-src-attr` for any `style=` attribute, in every engine; `style-src-elem`/`base-uri` on the DOMPurify engine) although the output is clean: the browser's own HTML parser checks them while parsing, in every document context, connected or not ([safe-fragment#13](https://github.com/johnhenry/safe-fragment/issues/13), pinned by `test/integration/csp-violations.test.ts`). WebKit reports none.
 - **The native Sanitizer API spec is still moving**; only Chromium (and, per CI, Firefox) ship `setHTML`, and Safari takes the DOMPurify path ([safe-fragment#4](https://github.com/johnhenry/safe-fragment/issues/4)).
 - **DOMPurify's cost is quadratic in removed nodes**: `maxInputLength` bounds it, it does not remove it ([safe-fragment#5](https://github.com/johnhenry/safe-fragment/issues/5)).
 - **`article-v1`/`ui-v1` keep relative `img src`**, a same-origin GET on render; opt in to `blockRelativeAutoLoadUrls` ([safe-fragment#6](https://github.com/johnhenry/safe-fragment/issues/6)).
 - **`<style>` is not supported** in any profile (dropped with its content): sanitizing CSS is a separate, larger security surface ([ADR 0006](docs/adr/0006-style-element-is-a-non-goal.md), [safe-fragment#11](https://github.com/johnhenry/safe-fragment/issues/11)). Keep component stylesheets outside the sanitized template; see [docs/profiles.md](docs/profiles.md#styles).
-- **`ui-v1` allows `class`**, which can match host selectors ([safe-fragment#7](https://github.com/johnhenry/safe-fragment/issues/7)).
+- `part` (component templates) is a styling hook the host stylesheet can target, the same class of exposure as `class` was ([ADR 0005](docs/adr/0005-component-templates-and-id-policy.md)).
 - **The native path's report cannot count the engine's own unconditional removals** (`<script>`, `<iframe>`, `on*` handlers, `javascript:` URLs; [safe-fragment#8](https://github.com/johnhenry/safe-fragment/issues/8), [ADR 0007](docs/adr/0007-no-gated-sink-in-the-native-report.md)): counting them needs a Trusted-Types-gated parse, which this package never makes, so sanitizing produces zero CSP violations. It lists everything the profile removed, and on DOMPurify the log also includes those baseline removals.
 - `loading="lazy"` falls back to eager rendering when `IntersectionObserver` is missing (rather than never rendering).
 - `FETCH_ABORTED`/`FETCH_SUPERSEDED` are reported through `render()`'s result only, never as events: an abort you caused is not a failure.
@@ -433,11 +442,11 @@ passes its own test suite, but has **not** had independent human security
 review ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)). Before trusting this with real, adversarial user content:
 
 - **Independent review of `src/sanitize/enforce.ts`, `src/sanitize/rebuild.ts` and `src/policy/url.ts`** -- the actual security boundary; everything else is defense-in-depth around them. Also `src/policy/registry.ts` validation of custom profiles.
-- **A wider adversarial corpus.** `test/fixtures/xss-corpus.ts` covers the classes of attack named in the original spec (img/onerror, `javascript:` URLs, svg/onload, MathML `xlink:href`, obfuscated protocols, formaction, srcdoc, parser-confusion, inline style, custom-element abuse) plus clobbering, tabnabbing and srcset cases in their own suites, but is not exhaustive: an OWASP cheat-sheet cross-check and mXSS fuzzing against both engines would materially increase confidence.
+- **The adversarial corpora and the fuzzer.** `test/fixtures/xss-corpus.ts`, `email-corpus.ts` and `foreign-corpus.ts` plus clobbering, tabnabbing and srcset suites, and the mutation-XSS fuzzer (`test/fuzz/`, ADR 0008: it found four real issues, all fixed) are broad but not exhaustive: an OWASP cheat-sheet cross-check and a long fuzz run per browser release would still add confidence. The reviewer packet, [docs/review/](docs/review/README.md), is the starting point.
 - **Native Sanitizer API behavior per browser release** ([safe-fragment#4](https://github.com/johnhenry/safe-fragment/issues/4)). Verified in Chromium and WebKit locally and Firefox in CI; the equivalence test has one documented Firefox divergence (`noscript`, scripting-flag parse).
 - **The DOMPurify version.** It is pinned to an exact version because profile output stability depends on it; the bump policy is in AGENTS.md. A supply-chain review of the dependency is still a reasonable pre-production step.
 - **The hard denylist** (`on*`, `formaction`, `srcdoc`, `action`, `xlink:href`) and the always-checked URL-attribute list for completeness against attribute-based vectors.
-- **The `email-v1` scaffold**, before it is used for anything beyond a starting point ([safe-fragment#2](https://github.com/johnhenry/safe-fragment/issues/2)).
+- **`email-v1` (`cid:` resolution, `dropElements`) and the SVG/MathML grammars** (`src/policy/cid.ts`, `src/policy/foreign.ts`, `src/sanitize/enforce-foreign.ts`): new surface since the first audit pass.
 
 ## Security model
 
@@ -494,9 +503,9 @@ review ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)).
 **What is still yours:**
 
 - **Choosing the right profile.** Rendering attacker-controlled content under
-  `ui-v1` (which allows `class` and, if you derive it so, custom elements) when
-  `article-v1` or `plain-text-v1` would do is a choice this library cannot make
-  for you.
+  `ui-v1` (which allows interactive elements and, if you derive it so, custom
+  elements and classes) when `article-v1` or `plain-text-v1` would do is a choice
+  this library cannot make for you.
 - **What your own custom elements do.** A derived profile lets your registered
   custom elements receive sanitized attribute values; what their
   `attributeChangedCallback` (or anything else) does with them is your code.
@@ -507,9 +516,9 @@ review ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)).
 - **Shadow DOM (`scope="shadow"`) is a styling convenience, not an isolation
   boundary** ([ADR 0003](docs/adr/0003-shadow-dom-is-not-sandboxing.md)).
 - **Same-origin GETs from relative `img src`** under `article-v1`/`ui-v1`
-  ([safe-fragment#6](https://github.com/johnhenry/safe-fragment/issues/6)) and
-  **host selectors matched by `ui-v1` `class` values**
-  ([safe-fragment#7](https://github.com/johnhenry/safe-fragment/issues/7)).
+  ([safe-fragment#6](https://github.com/johnhenry/safe-fragment/issues/6)), and
+  **which classes your content may use**: `allowedClasses` is yours to set
+  ([ADR 0011](docs/adr/0011-class-allowlist.md)).
 - **Cost under the size cap on the DOMPurify path**
   ([safe-fragment#5](https://github.com/johnhenry/safe-fragment/issues/5)): lower
   `maxInputLength` if you render attacker-sized content in Safari.
@@ -517,10 +526,9 @@ review ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)).
   phishing link is not a code-execution bug. See
   [docs/security-model.md](docs/security-model.md) "What this package does not
   protect against".
-- **The pending independent review** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)),
-  `email-v1` ([#2](https://github.com/johnhenry/safe-fragment/issues/2)),
-  SVG/MathML ([#3](https://github.com/johnhenry/safe-fragment/issues/3)) and the
-  moving native Sanitizer spec ([#4](https://github.com/johnhenry/safe-fragment/issues/4)).
+- **The pending independent review** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1);
+  [packet](docs/review/README.md)) and the moving native Sanitizer spec
+  ([#4](https://github.com/johnhenry/safe-fragment/issues/4)).
 
 Full detail: [docs/security-model.md](docs/security-model.md).
 
@@ -530,6 +538,7 @@ safe-fragment is the sanitizer the family reaches for when markup comes from
 somewhere less trusted than your own source. It has no runtime dependency on
 any sibling; the relationships are mechanisms, named below.
 
+- **[`johnhenry/workbench`](https://github.com/johnhenry/workbench)** ([live](https://johnhenry.github.io/workbench/), [docs](https://opensource.johnhenry.me/workbench/)) -- uses safe-fragment to render untrusted note bodies.
 - **[`@johnhenry/html-modules`](https://github.com/johnhenry/html-modules)** --
   html-modules stamps component templates into the page as real DOM, and its
   opt-in `sanitize` hook runs each template of a less-trusted module through a

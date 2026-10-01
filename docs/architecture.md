@@ -13,7 +13,9 @@ src/
   policy/
     profile.ts                ProfileDefinition shape + custom-element name/pattern helpers
     registry.ts               Frozen built-ins + registerProfile/unregisterProfile/deriveProfile
-    url.ts                    checkUrl() -- URL-parser-based scheme allowlisting (no regex)
+    url.ts                    checkUrl() -- URL-parser-based scheme allowlisting (no regex); hasScriptScheme()
+    cid.ts                    `cid:` content-id extraction and the validation of a resolver's answer (email-v1)
+    foreign.ts                SVG/MathML allowlists and value-grammar validators (opt-in profiles, ADR 0010)
   profiles/
     plain-text-v1.ts, article-v1.ts, ui-v1.ts, email-v1.ts   (exported as *_PROFILE definitions)
   sanitize/
@@ -23,6 +25,7 @@ src/
     native.ts                 Native Sanitizer API (setHTML) engine, inert-document parse + report diff
     dompurify.ts              DOMPurify fallback: loader, one instance per window, hooks
     enforce.ts                enforceProfile() -- the authoritative allowlist pass
+    enforce-foreign.ts        SVG/MathML branch of enforceProfile (opt-in profiles only, ADR 0010)
     rebuild.ts                Rebuilds the enforced fragment from fresh nodes
     index.ts                  sanitize()/sanitizeSync(): engine selection + enforce + rebuild
     public.ts                 sanitizeToFragment()/sanitizeToFragmentSync()
@@ -31,7 +34,7 @@ src/
     fetch.ts                  fetchSource() -- the `src` remote-fetch capability model
   render/
     safe-fragment-element.ts  createSafeFragmentElementClass() factory
-    element-types.ts          SafeFragmentElement interface, event map, HTMLElementTagNameMap
+    element-types.ts          SafeFragmentElement interface, event map (the HTMLElementTagNameMap augmentation is appended to dist/*.d.ts by scripts/append-dts.mjs)
     register.ts               registerSafeFragment(), getSafeFragmentElementClass()
   sandbox/
     example-sandbox-element.ts  createExampleSandboxElementClass() factory
@@ -39,8 +42,9 @@ src/
 test/
   unit/          Pure-logic tests (URL policy, enforceProfile, rebuild, profiles, registry, errors)
   integration/   Element lifecycle, fetch policy, DOMPurify loading + Trusted Types, public API, sandbox
-  security/      XSS corpus + benign corpus + cross-engine equivalence + clobbering, run per engine
-  fixtures/      Shared corpus data (xss-corpus.ts, benign-corpus.ts)
+  security/      XSS, benign, email and SVG/MathML corpora + cross-engine equivalence + clobbering, run per engine
+  fuzz/          Seeded mutation-XSS differential fuzzer (grammar, oracles, harness); `npm run fuzz` for long runs
+  fixtures/      Shared corpus data (xss-corpus.ts, benign-corpus.ts, email-corpus.ts, foreign-corpus.ts)
   helpers/       Shared test helpers (normalized DOM serialization)
   examples/      Smoke tests of the built examples (npm run examples)
   dist/          Node tests of the built ESM+CJS packages (npm run test:dist)
@@ -50,7 +54,7 @@ examples/
   03-sandbox-playground/  <example-sandbox> running a small live code sample
   04-playground/          interactive: unprotected vs protected vs report
 docs/
-  architecture.md (this file), profiles.md, security-model.md, adr/
+  architecture.md (this file), profiles.md, security-model.md, adr/, review/ (the independent-review packet)
 ```
 
 ## Why a factory function, not a top-level class

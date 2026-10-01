@@ -10,6 +10,25 @@ This entry covers the initial build (`1d620aa`) and the audit-driven pass
 after it. Because nothing was ever published, the breaking changes below break
 nobody.
 
+### Review-readiness, email, SVG/MathML, class allowlist, budgets (2026-10-01)
+
+Prepares the package for the independent review ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1); packet: [docs/review/](docs/review/README.md)) and closes the open feature issues that do not wait on it. The package is still unpublished, so the behavior changes below break nobody.
+
+- **Mutation-XSS differential fuzzer** (`c738f4b`): `test/fuzz/`, seeded and deterministic in `npm test` (150 cases per profile and engine plus the whole corpus replayed), `npm run fuzz` for long local runs. Oracles: nothing executes (a CSP-tripwire frame), an independent conformance verifier, re-sanitizing is a fixpoint, parse/serialize/parse is stable, the engines agree or the difference is documented. It found and drove fixes for, each with a regression test and a corpus fixture ([ADR 0008](docs/adr/0008-mutation-xss-fuzzer-findings.md)):
+  - **F1** attribute values that are markup to some parser (`-->`, `--!>`, `]>`, `/>`, `</style`, `</noscript`, ...) are dropped on both engines; native kept them, DOMPurify dropped them (`639c71b`).
+  - **F2** `javascript:`/`data:`/`...script:` values are dropped from every non-URL attribute on both engines (`639c71b`).
+  - **F3/F4** DOMPurify now parses `<!DOCTYPE html><xmp></xmp>` + the input with `FORCE_BODY` off: standards mode (it parsed in quirks mode, so `<p><table>` nested there and split on native) and a `<frameset>` can no longer replace its body (it returned `""`, rejected as `SANITIZE_FAILED`) (`639c71b`).
+  - **F6** the BMP default-ignorable characters (BOM, word joiner, soft hyphen, fillers, bidi controls, ...) are squeezed out before the scheme check, so `java<U+FEFF>script:` is refused (`c6f28d3`).
+  - Documented, not fixed: DOMPurify's mXSS heuristic over-removes an element in rare shapes (D3); see [docs/review/known-divergences.md](docs/review/known-divergences.md).
+- **`email-v1` for real** ([#2](https://github.com/johnhenry/safe-fragment/issues/2), `9a57e6b`, [ADR 0009](docs/adr/0009-email-v1.md)): `cid:` images through a caller-supplied `resolveCid` (on `img src` and `background` only; the answer is re-validated to `https:`/`blob:`/raster `data:`; never fetched; unresolved means removed), MSO conditional comments removed, VML and Office XML dropped with their text (new profile field `dropElements`, exact or `prefix*`), the table-layout attributes real mail uses from a fixed list, `center`/`font` and more elements. Email corpus (benign newsletter, receipt, Word-generated mail, quoted reply, `cid:` mail; and 16 hostile cases) through both engines. No CSS: a hidden preheader becomes visible; remote `https:` images load.
+- **SVG and MathML, opt-in** ([#3](https://github.com/johnhenry/safe-fragment/issues/3), `1b83616`, [ADR 0010](docs/adr/0010-svg-and-mathml-opt-in.md)): profile options `svg: "static"` and `mathml: "presentation"`; strict element and attribute allowlists, character-scan value grammars, same-fragment `url(#id)`/`#id` references (through `checkUrl`, ids namespaced), text-only integration points, placement checks, `xlink:href` kept only as a real XLink attribute, namespace-aware rebuild; no `foreignObject`, `script`, `style`, animation, `image`, `a`, filters, `maction`, `annotation-xml`, `href` in MathML. Adversarial namespace-confusion corpus on both engines. **Not equal:** the native engine removes `<use>` unconditionally, DOMPurify keeps it (D4, documented).
+- **Class allowlist** ([#7](https://github.com/johnhenry/safe-fragment/issues/7), `18e7e0a`, [ADR 0011](docs/adr/0011-class-allowlist.md)): `allowedClasses` (exact or `prefix*`) per profile; **`ui-v1` and `component-template-v1` now allow no classes** (an allowlist chosen over prefixing; ADR says why).
+- **Parsing hostile input under a strict CSP** ([#13](https://github.com/johnhenry/safe-fragment/issues/13), `c383ef4`): measured in twelve document contexts; Chromium's parser reports `style-src-attr` for `style=` in all of them, connected or not, so the count cannot be made zero by choosing a context. `test/integration/csp-violations.test.ts` pins that nothing else is reported (and that no result node is connected); documented as a known limitation. The issue stays open.
+- **Size budget in CI** (`0ae0847`): `npm run size` fails when the gzip -9 size of `dist/index.js` (ceiling 32,768 B; 28,371 B now, 21,604 B before this work) or the packed tarball (ceiling 296,960 B; about 255,000 B now, 198,357 B before) is exceeded. Documented in AGENTS.md.
+- **JSR readiness, prepare only** (`0ae0847`): `jsr.json`; `npx jsr publish --dry-run` passes and runs in CI; the `HTMLElementTagNameMap` global augmentation moved out of `src/` (JSR refuses it) into a post-build step (`scripts/append-dts.mjs`) so the npm `.d.ts` files keep it. Creating the JSR package is the owner's manual step.
+- **Reviewer packet** (`docs/review/`): threat model, trust boundary and code map, ADR summaries, the DOMPurify settings that are looser than its defaults, known divergences, the fuzzer, test inventory, open issues, questions for the reviewer.
+- README `## Family` links [workbench](https://github.com/johnhenry/workbench), which uses safe-fragment for untrusted note bodies.
+
 ### Release gate and test reliability (2026-10-01)
 
 - **The publish gate now also runs `npm pack --dry-run`**, so it matches CI's full suite (lint, typecheck, build, all three browsers, `test:dist`, examples, pack).
@@ -58,6 +77,8 @@ Found while wiring `sanitizeToFragment` into [html-modules](https://github.com/j
 - **Dual-package hazard:** the profile registry, DOMPurify loader and instance cache live on a `Symbol.for` `globalThis` key shared by the ESM and CJS builds, and `instanceof SafeFragmentError` works across them. `test/package/dual-package.test.ts` loads both built files in Node (`0a1bf0f`, `5c4982e`).
 
 ### Breaking changes since the initial build
+
+- **`ui-v1` and `component-template-v1` allow no `class`** (was: any); derive a profile with `allowedClasses` (`18e7e0a`). `email-v1` changed shape (new elements and attributes, `cid:`, `dropElements`) (`9a57e6b`). The shared drop-with-subtree list gained `foreignobject`, `annotation`, `annotation-xml`, `animate`, `animatetransform`, `animatemotion`, `set`, `metadata` (`1b83616`).
 
 - `defineProfile()` is removed; built-in profiles are deeply frozen. Use `registerProfile(deriveProfile("ui-v1", { name, customElements }))`; `unregisterProfile` removes your own (`0a1bf0f`).
 - `ProfileDefinition` gained `version`, `customElements` (exact tags and `prefix-*` patterns), `allowedDataAttributes` and `blockRelativeAutoLoadUrls`, and lost `allowDataAttributes`, `allowCustomElements` and `forceRelOnBlankTarget`.

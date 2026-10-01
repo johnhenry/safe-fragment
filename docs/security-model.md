@@ -14,7 +14,12 @@ is styling encapsulation, not isolation) and
 a disallowed element's content, identically in both engines) and
 [ADR 0005](adr/0005-component-templates-and-id-policy.md) (`component-template-v1`, `idPolicy: "keep-in-shadow"`),
 [ADR 0006](adr/0006-style-element-is-a-non-goal.md) (why `<style>` is not supported) and
-[ADR 0007](adr/0007-no-gated-sink-in-the-native-report.md) (no Trusted-Types-gated sink, even for the report).
+[ADR 0007](adr/0007-no-gated-sink-in-the-native-report.md) (no Trusted-Types-gated sink, even for the report),
+[ADR 0008](adr/0008-mutation-xss-fuzzer-findings.md) (what the mutation-XSS fuzzer found and fixed),
+[ADR 0009](adr/0009-email-v1.md) (`email-v1`: `cid:`, Office markup, layout attributes),
+[ADR 0010](adr/0010-svg-and-mathml-opt-in.md) (opt-in static SVG and presentation MathML) and
+[ADR 0011](adr/0011-class-allowlist.md) (`class` is an allowlist). The reviewer packet,
+[docs/review/](review/README.md), maps all of it to code.
 
 ## The pipeline, precisely
 
@@ -60,8 +65,10 @@ of it.
      created per window and reused (so a Trusted Types `dompurify` policy is
      registered once).
    - Both engines parse inside an **inert document** (no browsing context,
-     so nothing loads or runs), in `<body>`/`<div>` context, so the same
-     input yields the same tree in both. The native engine runs in a
+     so nothing loads or runs), in `<body>`/`<div>` context, standards mode, so the same
+     input yields the same tree in both (DOMPurify is fed `<!DOCTYPE html><xmp></xmp>` before the
+     input: the doctype is standards mode, `<xmp>` starts the body and stops a `<frameset>` from
+     replacing it, [ADR 0008](adr/0008-mutation-xss-fuzzer-findings.md)). The native engine runs in a
      blocklist configuration for elements (the dangerous containers) and an
      allowlist for attributes; DOMPurify runs with `KEEP_CONTENT: true` and
      `FORBID_CONTENTS` set to the same dangerous-container list. Neither
@@ -99,6 +106,22 @@ of it.
      - `data-*` attributes are kept only when named in the profile's
        `allowedDataAttributes` (`ui-v1`: `data-action` only; no wildcard) or
        in the element's own attribute list.
+   - **Attribute values that are markup to some parser are dropped** (any attribute, any
+     profile): `-->`, `--!>`, `]>`, `/>` or the end tag of a raw-text element
+     (`</style`, `</script`, `</title`, `</textarea`, `</noscript`, ...) in a value would become
+     markup if a host serialized and re-parsed the output in a context that does not escape
+     `<`/`>` in attributes. **A value that starts with `data:` or a word ending in `script:`**
+     (`javascript:`, `vbscript:`) is dropped from every non-URL attribute too
+     ([ADR 0008](adr/0008-mutation-xss-fuzzer-findings.md), the rules DOMPurify applies, run on both engines).
+   - **`class` is an allowlist** (`allowedClasses`, exact or `prefix*`); a profile that lists
+     none allows no class ([ADR 0011](adr/0011-class-allowlist.md)).
+   - **`cid:`** (email-v1) is resolved through the caller's `resolveCid` or removed, on
+     `img src`/`background` only; the resolver's answer must be `https:`, `blob:` or a raster
+     `data:` URL ([ADR 0009](adr/0009-email-v1.md)). Nothing is ever fetched.
+   - **SVG and MathML** are dropped unless the profile opts in (`svg: "static"`,
+     `mathml: "presentation"`), and then only a strict allowlist with character-scan value
+     grammars, same-fragment references, text-only integration points and a placement
+     check ([ADR 0010](adr/0010-svg-and-mathml-opt-in.md), `src/sanitize/enforce-foreign.ts`).
    - **Every URL-valued attribute is checked**, whatever the profile's own
      `urlAttributes` says: `src`, `href`, `srcset`, `imagesrcset`, `poster`,
      `action`, `formaction`, `xlink:href`, `background`, `ping`, `cite`,
@@ -239,10 +262,14 @@ have their children in the output.
 Being explicit about scope, per the project's "prefer the conservative,
 documented interpretation over silently overreaching" instruction:
 
-- **CSS-based attacks via the `class` attribute.** `article-v1` and
-  `email-v1` do not allow `class` at all; `ui-v1` does (needed for
-  practical component styling) with no attempt to validate class _names_
-  against the host page's actual stylesheet (safe-fragment#7).
+- **Host selectors matched by classes you allow.** `class` is an allowlist and
+  `ui-v1` allows none; the classes a derived profile names are as safe as the host's
+  stylesheet treats them ([ADR 0011](adr/0011-class-allowlist.md)). `part` is the same class
+  of styling hook for component templates.
+- **CSP reports from the browser's own parser.** In Chromium, parsing hostile input that
+  contains `style=`, `<style>` or `<base>` reports `style-src-attr` / `style-src-elem` /
+  `base-uri` violations although the output is clean; the parser does it in every document
+  context (safe-fragment#13, pinned in `test/integration/csp-violations.test.ts`).
 - **Same-origin GET side effects from relative image URLs** under
   `article-v1`/`ui-v1` (safe-fragment#6); opt in to
   `blockRelativeAutoLoadUrls` via `deriveProfile`.
@@ -258,7 +285,8 @@ href="https://evil-but-syntactically-fine.example/">Your Bank</a>` is
   not from the code it runs.
 - **What your own custom elements do** with the sanitized attributes they
   receive.
-- **SVG/MathML** are not supported at all (safe-fragment#3), and `email-v1`
-  is a scaffold (safe-fragment#2).
+- **SVG/MathML** are opt-in and partial (no animation, `image`, `foreignObject`,
+  filters, `style`; `<use>` is dropped by the native engine and kept by DOMPurify), and
+  `email-v1` has no CSS and loads remote `https:` images (tracking pixels).
 - **Anything the independent security review has not yet covered**
   (safe-fragment#1).

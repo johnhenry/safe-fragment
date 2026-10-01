@@ -78,8 +78,10 @@ another name. `<button>`s are always forced to `type="button"` (so
 `submit`/`reset` never survive). `data-action` is read by
 `<safe-fragment>`'s click delegation and dispatched as a
 `safe-fragment:action` event, letting markup _request_ behavior without
-ever supplying code. `class` is allowed (safe-fragment#7 tracks the
-host-selector risk). Same relative-URL risk as `article-v1` (#6).
+ever supplying code. **`class` is allowlisted and `ui-v1` allows no classes**:
+a `class` token survives only if the profile's `allowedClasses` names it (see
+[Class allowlist](#class-allowlist), [ADR 0011](adr/0011-class-allowlist.md)).
+Same relative-URL risk as `article-v1` (#6).
 
 Deliberately excludes forms (`<form>`, `<input>`, `<select>`,
 `<textarea>`, `<button type="submit">`) and SVG/MathML entirely for v1 --
@@ -107,7 +109,7 @@ Nothing else differs. In particular, still removed (each by design):
 | `<style>`                                                              | Dropped with its content. Not supported ([ADR 0006](adr/0006-style-element-is-a-non-goal.md)): keep stylesheets outside the sanitized template (below). |
 | `style="..."`, `srcset`, `data-*` other than `data-action`             | Removed.                                                                                                                                                |
 | `<form>`, `<input>`, `<select>`, `<textarea>`                          | Unwrapped. Form-associated components: the control must come from your own code, or derive a profile and accept the surface.                            |
-| SVG, MathML                                                            | Dropped ([#3](https://github.com/johnhenry/safe-fragment/issues/3)).                                                                                    |
+| SVG, MathML                                                            | Dropped, unless you derive a profile with `svg: "static"` / `mathml: "presentation"` ([below](#svg-and-mathml-opt-in)).                                 |
 | `http:` links, including `//host` when the page is served over `http:` | Removed: schemes are `https:`, `mailto:` and relative. Correct, but surprising on a local `http:` dev page.                                             |
 | `id` and every reference to it                                         | Rewritten to `user-content-<id>` unless you opt in to `idPolicy: "keep-in-shadow"` (below).                                                             |
 
@@ -168,40 +170,111 @@ shadowRoot.append(fragment);
 
 ## `email-v1`
 
-**Status: scaffold, not fully hardened -- see the caveat in
-`src/profiles/email-v1.ts` and the README's "Known limitations."**
+**Status: implemented, with an email corpus (benign and hostile) run through
+both engines; not yet independently reviewed** ([ADR 0009](adr/0009-email-v1.md),
+safe-fragment#2).
 
-A restrictive subset covering the table-based layout patterns real HTML
-email relies on: no forms, no scripting elements, no
-embeds/iframes/objects, no custom elements, no `style`. Shares
-`article-v1`'s URL-scheme policy and, unlike it, sets
-`blockRelativeAutoLoadUrls: true`: a relative `img src`/`srcset`/`poster`
-is removed, because it would otherwise fire a same-origin GET on render.
-Tracked in safe-fragment#2. Does **not** yet special-case `cid:`
-(inline attachment) URLs, VML (`<v:*>`, Outlook's proprietary markup), or
-MSO conditional comments, all of which real-world HTML email commonly
-uses. The adversarial regression corpus only runs its shared,
-cross-profile fixtures against this profile (via the profile-shape
-invariant tests in `test/unit/profiles.test.ts`), not an email-specific
-fixture set targeting email-client-specific quirks. Treat this as a
-starting point for a future hardening pass, not a battle-tested profile.
+Received HTML email bodies. Table-based layout survives; the three things real
+mail does that used to be unhandled are handled:
 
-## Why no `class` or `style`
+- **`cid:` images.** `cid:` is an allowlisted scheme on `img src` and `background`
+  only. The library never fetches it. Pass a resolver and it is replaced by the URL
+  the resolver returns; without one the attribute is removed.
 
-`style` is excluded from every v1 profile outright -- inline CSS can smuggle
+  ```ts
+  const { fragment } = await sanitizeToFragment(html, {
+    profile: "email-v1",
+    resolveCid: (contentId) => attachmentUrls.get(contentId), // e.g. a blob: URL you made from the MIME part
+  });
+  // or for the element: registerSafeFragment({ resolveCid })
+  ```
+
+  The answer is validated again before it is written: only `https:`, `blob:` and
+  raster `data:image/{png,jpeg,gif,webp,avif,bmp}` URLs pass (never SVG, never
+  `javascript:`, `http:`, protocol-relative or relative); anything else, a throw, or a
+  non-string removes the attribute. The content-id is attacker-chosen, so the resolver
+  should look it up, not concatenate it.
+
+- **MSO conditional comments and VML.** `<!--[if mso]>...<![endif]-->` is a comment and
+  is removed with its content; the downlevel-hidden `<!--[if !mso]><!-->...<!--<![endif]-->`
+  keeps the non-Outlook content. VML and Office XML outside comments (`<v:*>`, `<w:*>`,
+  `<m:*>`, `<xml>`, `<o:OfficeDocumentSettings>`...) are dropped with their text through
+  the profile's `dropElements`; `<o:p>` is unwrapped.
+- **Layout attributes**, from a fixed list: `width height align valign bgcolor border
+cellpadding cellspacing colspan rowspan nowrap summary background` (on the elements
+  that take them), `hspace`/`vspace` on `img`, `color face size` on `font`, plus `center`
+  and `font`. `background` is a URL attribute: checked like `src`, and `cid:`-resolvable.
+
+Still true: no forms, scripting, embeds, custom elements, `class` or `style`
+(`<style>` and inline `style=` are the main way mail is styled, and both are
+unsupported, [ADR 0006](adr/0006-style-element-is-a-non-goal.md)). Two visible
+consequences: colours and fonts set by CSS are lost, and a "hidden" preheader
+(`style="display:none"`) becomes visible text. `blockRelativeAutoLoadUrls: true`: a
+relative `img src` is removed. Remote `https:` images **do** load (a tracking pixel is
+how the format works); derive a profile with `urlSchemes: ["relative", "mailto:", "cid:"]`
+to refuse remote loads.
+
+## Why no `style`, and `class` as an allowlist
+
+`style` is excluded from every profile outright -- inline CSS can smuggle
 `url(javascript:...)`-style payloads (neutralized here regardless, since
 the attribute is removed unconditionally rather than content-inspected)
 and, more subtly, CSS itself can be used for exfiltration and UI-redress
 attacks that have nothing to do with `javascript:` URLs at all. Rather than
-try to build a safe CSS-property/value allowlist for v1, this package
-simply doesn't allow the attribute.
+try to build a safe CSS-property/value allowlist, this package simply doesn't
+allow the attribute (and `<style>`, ADR 0006).
 
-`class` is excluded from `article-v1`/`email-v1` (both read-mostly content
-profiles with no legitimate need for it) but allowed in `ui-v1` (where
-practical component styling needs it) -- see docs/security-model.md
-"What this package does not protect against" for the residual risk this
-carries (a `class` value from sanitized markup could coincidentally match
-a selector in the host page's own stylesheet).
+`class` is different: it is allowed, but only the tokens a profile names.
+
+### Class allowlist
+
+A class token from untrusted markup can match the host page's own selectors
+(`.hidden`, `.admin-banner`, `.modal-backdrop`), which is UI redress with no
+script and works under any CSP. `ProfileDefinition.allowedClasses` lists the
+tokens content may use: exact (`"btn"`) or prefix (`"user-*"`, one trailing
+`*`, never a bare `*`), case-sensitive. A token that matches nothing is removed
+(`class-not-allowlisted`); an attribute with nothing left is removed. **`ui-v1`
+and `component-template-v1` ship with an empty list, so they allow no classes**;
+`article-v1` and `email-v1` do not list `class` at all.
+
+```ts
+registerProfile(deriveProfile("ui-v1", { name: "my-ui-v1", allowedClasses: ["user-*", "btn"] }));
+```
+
+Why an allowlist and not prefixing, and what it does not cover: [ADR 0011](adr/0011-class-allowlist.md).
+
+## SVG and MathML (opt-in)
+
+Every SVG and MathML element is dropped unless the profile opts in. No built-in does;
+derive one:
+
+```ts
+registerProfile(deriveProfile("article-v1", { name: "my-article-v1", svg: "static", mathml: "presentation" }));
+```
+
+- **`svg: "static"`** is a picture: `svg g defs symbol use path rect circle ellipse line
+polyline polygon text tspan textPath title desc linearGradient radialGradient stop
+clipPath`, each with its own attribute list (geometry, presentation attributes such as
+  `fill`, `stroke`, `transform`, `viewBox`). No `foreignObject`, `script`, `style`,
+  animation (`animate`, `set`, ...), `image`, `a`, filters, masks, patterns, markers,
+  `switch`, event attributes or `style`. A `fill`/`stroke`/`clip-path` value is a plain
+  colour, `rgb()`/`hsl()`, or `url(#id)` of this fragment; `href`/`xlink:href` must be
+  `#id` of this fragment (and pass `checkUrl`); path data, transforms and font families
+  have their own character grammars. Anything that does not fit removes the attribute.
+- **`mathml: "presentation"`** is `math mrow mi mn mo ms mtext mspace mfrac msqrt mroot msub
+msup msubsup munder mover munderover mtable mtr mtd mpadded mphantom menclose mstyle` with
+  their presentation attributes: no `annotation`, `annotation-xml`, `semantics`, `maction`,
+  `mglyph`, no `href`.
+- `title`, `desc` and the MathML token elements hold text only. Ids are namespaced
+  (`user-content-`) like everywhere, and `url(#id)`/`#id` references are rewritten with them.
+- **Not equal on both engines: `<use>`.** The native Sanitizer API removes `<use>`
+  unconditionally (Chromium). DOMPurify keeps a same-fragment `use`. So `use` works where
+  DOMPurify is the engine (Safari) and is dropped where the native engine runs. Do not rely
+  on it across browsers. Everything else gives the same output on both engines (tested).
+- Without `style` an SVG with no `fill` attribute renders black; put paint in attributes.
+
+Rationale, the full allowlists and the namespace-confusion corpus:
+[ADR 0010](adr/0010-svg-and-mathml-opt-in.md).
 
 ## Custom profiles
 
@@ -226,7 +299,8 @@ const mine = registerProfile({
   returns it. Invalid input throws a `SafeFragmentError` (`INVALID_PROFILE`,
   or `PROFILE_MISMATCH` for a name/version disagreement), never a raw
   `TypeError`. It refuses: dangerous elements (`script`, `style`, `template`,
-  `iframe`, `object`, `embed`, `svg`, `math`, `base`, `meta`, `link`, ...),
+  `iframe`, `object`, `embed`, `svg`, `math`, `base`, `meta`, `link`, ...; SVG and
+  MathML come in through the `svg`/`mathml` options, not as elements),
   `on*`/`style`/`formaction`/`srcdoc`/`action`/`xlink:href` attributes,
   `javascript:`/`data:`/`vbscript:`/`file:`/`blob:` schemes,
   `allowStyleAttribute: true`, wildcard `data-*` names, custom-element tags
@@ -238,6 +312,10 @@ const mine = registerProfile({
 - `deriveProfile(base, overrides)` builds, without registering or mutating,
   a new definition from an existing profile. This is how you add custom
   elements, `data-*` names or a scheme to a built-in.
+- Also validated: `allowedClasses` (tokens or `prefix*`), `dropElements` (extra
+  elements dropped with their subtree: exact names or `prefix*`), `svg` (`"static"`)
+  and `mathml` (`"presentation"`). `deriveProfile` takes the same overrides (`svg: null`
+  turns a base's option off).
 - Custom-element entries are exact tags or prefix patterns ending in `*`
   (`ui--*`); exact matches win, then the longest prefix. URL-valued
   attributes on custom elements (`src`, `href`, `srcset`, ...) are checked

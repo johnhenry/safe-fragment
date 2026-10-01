@@ -24,9 +24,16 @@ const UI_MARKUP = `
  */
 export async function run(container, { tagName = "safe-fragment", onAction } = {}) {
   registerSafeFragment({ tagName });
-  // Built-in profiles are immutable: derive a new one that also allows <rating-stars>.
+  // Built-in profiles are immutable: derive a new one that also allows <rating-stars>, and names the one class
+  // its content may use (ui-v1 allows no classes by default; see ADR 0011).
   if (!getProfile(PROFILE)) {
-    registerProfile(deriveProfile("ui-v1", { name: PROFILE, customElements: [{ tag: "rating-stars", attributes: ["value", "max"] }] }));
+    registerProfile(
+      deriveProfile("ui-v1", {
+        name: PROFILE,
+        customElements: [{ tag: "rating-stars", attributes: ["value", "max"] }],
+        allowedClasses: ["toolbar"],
+      }),
+    );
   }
 
   const el = document.createElement(tagName);
