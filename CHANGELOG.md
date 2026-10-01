@@ -10,6 +10,11 @@ This entry covers the initial build (`1d620aa`) and the audit-driven pass
 after it. Because nothing was ever published, the breaking changes below break
 nobody.
 
+### Release gate and test reliability (2026-10-01)
+
+- **The publish gate now also runs `npm pack --dry-run`**, so it matches CI's full suite (lint, typecheck, build, all three browsers, `test:dist`, examples, pack).
+- **Two WebKit timing flakes fixed** (tests only; no `src/` change): fixed `settle()` sleeps raced the cold first render and failed about 45% of Chromium+WebKit runs. Tests now wait on `safe-fragment:render` / `safe-fragment:disabled`. Analysis in AGENTS.md.
+
 ### Integration fixes from html-modules (2026-10-01)
 
 Found while wiring `sanitizeToFragment` into [html-modules](https://github.com/johnhenry/html-modules) as its template sanitizer.

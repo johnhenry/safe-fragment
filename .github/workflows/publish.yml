@@ -21,6 +21,10 @@ jobs:
       id-token:
         write # required by the reusable workflow's provenance step --
         # see johnhenry/workflows' README for why this must be declared here too.
+    # The reusable workflow runs ONLY the gate-commands below (it has no gate of
+    # its own) and then `npm publish`. Keep this list identical to ci.yml's: the
+    # publish gate must be the full suite (lint, typecheck, build, all three
+    # browsers via `npm test`, test:dist, examples, pack).
     uses: johnhenry/workflows/.github/workflows/npm-publish.yml@v1
     with:
       node-version: "26"
@@ -32,4 +36,5 @@ jobs:
         npm test
         npm run test:dist
         npm run examples
+        npm pack --dry-run
     secrets: inherit

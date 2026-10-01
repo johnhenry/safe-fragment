@@ -29,6 +29,26 @@ async function settle(ms = 30): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Resolves on the next `type` event from `target`; rejects after `timeoutMs` so a
+ * render that never happens fails loudly instead of hanging. Attach it BEFORE the
+ * action that triggers the event. Prefer this to a fixed `settle()` sleep when the
+ * test needs a render to have finished (a fixed sleep flaked on WebKit).
+ */
+function nextEvent(target: EventTarget, type: string, timeoutMs = 5000): Promise<Event> {
+  return new Promise<Event>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      target.removeEventListener(type, onEvent);
+      reject(new Error(`timed out after ${timeoutMs}ms waiting for "${type}"`));
+    }, timeoutMs);
+    function onEvent(e: Event): void {
+      clearTimeout(timer);
+      resolve(e);
+    }
+    target.addEventListener(type, onEvent, { once: true });
+  });
+}
+
 /** Polls until `predicate` holds (IntersectionObserver delivery timing differs between engines). */
 async function waitUntil(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
   const start = performance.now();
@@ -90,8 +110,9 @@ describe("upgrade-property pass", () => {
     el.debug = true;
     document.body.appendChild(el);
     live.push(el);
+    const rendered = nextEvent(el, "safe-fragment:render");
     registerSafeFragment({ tagName: tag });
-    await settle();
+    await rendered;
     expect(el.shadowRoot?.querySelector("p")?.textContent).toBe("early");
     expect(el.getAttribute("scope")).toBe("shadow");
     expect(el.hasAttribute("strict")).toBe(true);

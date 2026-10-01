@@ -36,35 +36,52 @@ async function settle(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 20));
 }
 
-function waitForEvent(target: EventTarget, type: string): Promise<CustomEvent> {
-  return new Promise((resolve) => {
-    target.addEventListener(type, (e) => resolve(e as CustomEvent), { once: true });
+/**
+ * Event-based wait (attach BEFORE triggering). Rejects after `timeoutMs` so a missing
+ * event fails with a clear message. Use this, not `settle()`, whenever a test needs a
+ * render to have FINISHED: a fixed sleep flaked on a cold first render in WebKit.
+ * `settle()` remains only for negative assertions ("nothing rendered").
+ */
+function waitForEvent(target: EventTarget, type: string, timeoutMs = 5000): Promise<CustomEvent> {
+  return new Promise((resolve, reject) => {
+    const onEvent = (e: Event): void => {
+      clearTimeout(timer);
+      resolve(e as CustomEvent);
+    };
+    const timer = setTimeout(() => {
+      target.removeEventListener(type, onEvent);
+      reject(new Error(`timed out after ${timeoutMs}ms waiting for "${type}"`));
+    }, timeoutMs);
+    target.addEventListener(type, onEvent, { once: true });
   });
 }
 
 describe("<safe-fragment> source precedence", () => {
   it("prefers .html property over a <template> child", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "article-v1";
     el.innerHTML = "<template><p>from template</p></template>";
     el.html = "<p>from property</p>";
-    await settle();
+    await rendered;
     expect((el.getRenderedRoot() as Element).innerHTML).toContain("from property");
   });
 
   it("uses a <template> child when no .html property is set", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "article-v1";
     el.innerHTML = "<template><p>from template</p></template>";
-    await settle();
+    await rendered;
     expect((el.getRenderedRoot() as Element).innerHTML).toContain("from template");
   });
 
   it("legacy content attribute works and warns", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "article-v1";
     el.setAttribute("content", "<p>legacy</p>");
-    await settle();
+    await rendered;
     expect((el.getRenderedRoot() as Element).innerHTML).toContain("legacy");
   });
 
@@ -121,22 +138,25 @@ describe("<safe-fragment> render lifecycle", () => {
 
   it("microtask-coalesces multiple synchronous property changes into a single render", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "article-v1";
     let renderCount = 0;
     el.addEventListener("safe-fragment:render", () => renderCount++);
     el.html = "<p>one</p>";
     el.html = "<p>two</p>";
     el.html = "<p>three</p>";
-    await settle();
+    await rendered;
+    await settle(); // negative check: no second render may follow
     expect(renderCount).toBe(1);
     expect((el.getRenderedRoot() as Element).innerHTML).toContain("three");
   });
 
   it("clear() empties the rendered root", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "article-v1";
     el.html = "<p>content</p>";
-    await settle();
+    await rendered;
     expect((el.getRenderedRoot() as Element).innerHTML).not.toBe("");
     el.clear();
     expect((el.getRenderedRoot() as Element).innerHTML).toBe("");
@@ -144,10 +164,11 @@ describe("<safe-fragment> render lifecycle", () => {
 
   it("render-mode=once ignores subsequent property changes but refresh() still works", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.setAttribute("render-mode", "once");
     el.profile = "article-v1";
     el.html = "<p>first</p>";
-    await settle();
+    await rendered;
     expect((el.getRenderedRoot() as Element).innerHTML).toContain("first");
 
     el.html = "<p>second</p>";
@@ -171,12 +192,14 @@ describe("<safe-fragment> render lifecycle", () => {
 
   it("disabled prevents rendering and clears existing content", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "article-v1";
     el.html = "<p>x</p>";
-    await settle();
+    await rendered;
     expect((el.getRenderedRoot() as Element).innerHTML).not.toBe("");
+    const disabledEvent = waitForEvent(el, "safe-fragment:disabled");
     el.disabled = true;
-    await settle();
+    await disabledEvent;
     expect((el.getRenderedRoot() as Element).innerHTML).toBe("");
   });
 });
@@ -184,18 +207,20 @@ describe("<safe-fragment> render lifecycle", () => {
 describe("<safe-fragment> scope", () => {
   it("light scope renders inside the host element itself", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "article-v1";
     el.html = "<p>light</p>";
-    await settle();
+    await rendered;
     expect(el.querySelector("p")?.textContent).toBe("light");
   });
 
   it("shadow scope renders inside an open shadow root with part=content", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.setAttribute("scope", "shadow");
     el.profile = "article-v1";
     el.html = "<p>shadow</p>";
-    await settle();
+    await rendered;
     expect(el.shadowRoot).not.toBeNull();
     const wrapper = el.shadowRoot!.querySelector('[part="content"]');
     expect(wrapper?.querySelector("p")?.textContent).toBe("shadow");
@@ -205,9 +230,10 @@ describe("<safe-fragment> scope", () => {
 describe("<safe-fragment> ui-v1 action/link delegation", () => {
   it("dispatches safe-fragment:action for data-action elements", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "ui-v1";
     el.html = '<button type="button" data-action="do-thing">Go</button>';
-    await settle();
+    await rendered;
     const actionPromise = waitForEvent(el, "safe-fragment:action");
     (el.querySelector("button") as HTMLElement).click();
     const event = await actionPromise;
@@ -216,9 +242,10 @@ describe("<safe-fragment> ui-v1 action/link delegation", () => {
 
   it("dispatches safe-fragment:link for anchor clicks", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "article-v1";
     el.html = '<a href="https://example.com/x">link</a>';
-    await settle();
+    await rendered;
     const linkPromise = waitForEvent(el, "safe-fragment:link");
     const a = el.querySelector("a") as HTMLAnchorElement;
     a.addEventListener("click", (e) => e.preventDefault()); // don't actually navigate in the test
@@ -231,9 +258,10 @@ describe("<safe-fragment> ui-v1 action/link delegation", () => {
 describe("<safe-fragment> plain-text-v1 never parses HTML", () => {
   it("renders markup as literal text, not elements", async () => {
     const el = create();
+    const rendered = waitForEvent(el, "safe-fragment:render");
     el.profile = "plain-text-v1";
     el.html = "<p>not a real tag</p>";
-    await settle();
+    await rendered;
     const root = el.getRenderedRoot() as Element;
     expect(root.querySelector("p")).toBeNull();
     expect(root.textContent).toBe("<p>not a real tag</p>");
