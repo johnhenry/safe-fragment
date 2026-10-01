@@ -42,7 +42,7 @@ if (!getProfile("fuzz-rich-v1"))
   registerProfile(deriveProfile("article-v1", { name: "fuzz-rich-v1", svg: "static", mathml: "presentation", allowedClasses: ["user-*"] }));
 const PROFILES = ["article-v1", "ui-v1", "email-v1", "component-template-v1", "fuzz-ui-classes-v1", "fuzz-rich-v1"];
 const BATCH = 20;
-const MAX_REPORTED = 4;
+const MAX_REPORTED = 12;
 
 function describeFinding(f: Finding, shrunk: string, where: string): string {
   return `[${f.oracle}] engine=${f.engine} profile=${f.profile} ${where}\ninput (shrunk): ${JSON.stringify(shrunk)}\noriginal input: ${JSON.stringify(f.input)}\n${f.detail}`;

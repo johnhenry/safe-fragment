@@ -135,7 +135,7 @@ silently ignored by Chromium).
 
 ## 5. Known divergences
 
-Full list with reasons and tests: [known-divergences.md](known-divergences.md). In short: Firefox `<noscript>` parse (scripting flag),
+Full list with reasons and tests: [known-divergences.md](known-divergences.md). In short: Firefox `<noscript>` parse (scripting flag, D5) and foster-parenting order out of a table (D6),
 DOMPurify's mXSS heuristic over-removes in rare shapes (D3), the native engine removes `<use>` unconditionally (D4), the native
 report cannot list the engine's baseline removals (ADR 0007), the parse realm differs by engine (an iframe on Chromium, ADR 0012), and output trees are not always parser-canonical (benign nesting drift). None is a way to exceed a
 profile; each is safe by construction or by `enforceProfile`.
@@ -178,7 +178,7 @@ fragments; a corpus entry spliced between sentences. The fragments target the pl
 4. **Parse -> serialize -> parse round trip.** The reparsed output is still conformant and a second round changes nothing. (Output trees are not
    always equal to their reparse: unwrapping can leave `<p><div>`; that is counted, not failed; see [known-divergences.md](known-divergences.md).)
 5. **Engines agree.** Normalized trees of native and DOMPurify output are equal, or the difference is a documented divergence
-   (`test/fuzz/divergences.ts`: D3, D4). Anything else fails.
+   (`test/fuzz/divergences.ts`: D3, D4 everywhere; D5, D6 on Firefox). Anything else fails.
 
 A failing case is shrunk by delta debugging and printed with its seed, index, both outputs and the reproduction command.
 

@@ -244,6 +244,11 @@ export const XSS_CORPUS: XssFixture[] = [
     forbiddenSubstrings: ["onerror", "</noscript"],
     forbiddenAttributes: [{ selector: "p", attribute: "title" }],
     survives: ["y"],
+    knownDivergence: {
+      browsers: ["firefox"],
+      reason:
+        "Firefox's native setHTML parses with the scripting flag ENABLED, so <noscript> content is raw text that ends at the first </noscript> (inside the attribute value) and the tail is parsed as markup; DOMPurify's DOMParser document parses with scripting DISABLED. Both outputs are fully enforced and pass the forbidden-substring check (same divergence as the noscript/title fixture above).",
+    },
   },
   {
     name: "F1 attribute value with a comment closer",

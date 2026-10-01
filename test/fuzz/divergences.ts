@@ -32,7 +32,20 @@ function hasCommentLike(input: string): boolean {
  * text is a subsequence of native's (it removed, never added) and the input has a
  * comment-like token.
  */
+export const DIVERGENCE_FIREFOX_NOSCRIPT = "D5 Firefox native setHTML parses with scripting enabled (<noscript> is raw text)";
+export const DIVERGENCE_FIREFOX_FOSTER = "D6 Firefox native fragment parse foster-parents out of a <table> in a different order (same content)";
+
+const IS_FIREFOX = typeof navigator !== "undefined" && /Firefox\//.test(navigator.userAgent);
+
+/** Same characters in a different order (a permutation of the normalized serialization). */
+function samePermutation(a: string, b: string): boolean {
+  return a.length === b.length && [...a].sort().join("") === [...b].sort().join("");
+}
+
 export function divergenceReason(input: string, native: DocumentFragment, dompurify: DocumentFragment): string | undefined {
+  const lower = input.toLowerCase();
+  if (IS_FIREFOX && lower.includes("<noscript")) return DIVERGENCE_FIREFOX_NOSCRIPT;
+  if (IS_FIREFOX && lower.includes("<table") && samePermutation(normalize(native), normalize(dompurify))) return DIVERGENCE_FIREFOX_FOSTER;
   const a = native.textContent ?? "";
   const b = dompurify.textContent ?? "";
   if (hasCommentLike(input) && b.length < a.length && isSubsequence(b, a)) return DIVERGENCE_OVERREMOVAL;

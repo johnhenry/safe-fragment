@@ -31,12 +31,21 @@ The native Sanitizer API removes `<use>` (and what is inside it) unconditionally
 Firefox runs the same equivalence suite in CI). DOMPurify keeps a same-fragment `<use>`. Under `svg: "static"` this means `use` works in Safari and not in Chromium.
 Safe, not equal; documented in ADR 0010 and `docs/profiles.md`. The SVG corpus and the fuzzer compare the engines with `use` removed from both.
 
-### Firefox: `<noscript>` and the scripting flag
+### D5, Firefox: `<noscript>` and the scripting flag
 
 Firefox's native `setHTML` parses with the scripting flag **enabled**, so `<noscript>` content is raw text that ends at the first `</noscript>` (which can sit
 inside an attribute value), and the tail is parsed as markup; DOMPurify's `DOMParser` document parses with scripting **disabled**, so `noscript` holds elements and
 its whole subtree is dropped. Both outputs pass the forbidden-substring check and full enforcement. Recorded as a `knownDivergence` on one XSS fixture
 (`browsers: ["firefox"]`), visible in the test title. The new F1 rule also drops the attribute value that closes the `noscript` on both engines.
+
+The fuzzer tolerates a native-vs-DOMPurify difference on Firefox when the input contains `<noscript` (D5); every other oracle still applies to both outputs.
+
+### D6, Firefox: foster-parenting order out of a `<table>`
+
+For input such as `<table>...</table>/<table><svg>%>`, text and elements that the tree builder foster-parents out of a `<table>` land **before** the table in the spec, in Chromium's native
+engine and in DOMPurify's document, and **after** it in Firefox's native `setHTML` fragment parse (`<table></table><svg>%&gt;</svg>` vs `<svg>%&gt;</svg><table></table>`). The content,
+elements and attributes are identical; only the order of siblings differs, and both outputs are fully enforced. Found by the CI Firefox run of the fuzzer (it cannot be run locally).
+The fuzzer tolerates it on Firefox for inputs containing `<table` when the two normalized outputs are permutations of each other (D6).
 
 ### Native report vs DOMPurify report
 
