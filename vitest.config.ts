@@ -25,7 +25,9 @@ export default defineConfig({
     // build`. Run them via `npm run examples` (which builds first), not
     // plain `npm test` -- a fresh `npm ci && npm test` with no build step
     // should not fail just because dist/ doesn't exist yet.
-    include: ["test/unit/**/*.test.ts", "test/integration/**/*.test.ts", "test/security/**/*.test.ts"],
+    include: process.env.SF_FUZZ_ONLY
+      ? ["test/fuzz/**/*.test.ts"]
+      : ["test/unit/**/*.test.ts", "test/integration/**/*.test.ts", "test/security/**/*.test.ts", "test/fuzz/**/*.test.ts"],
     // Single worker: multiple concurrent Playwright browser contexts were
     // occasionally causing a "Browser connection was closed" flake under
     // resource contention. Test files still run in one shared page

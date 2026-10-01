@@ -93,7 +93,11 @@ describe("srcset / imagesrcset: every candidate is checked", () => {
     // descriptor, but the attribute value read as a single URL (as a custom
     // element might) is javascript: once the URL parser strips the tab.
     for (const bad of ["java\tscript:alert(1)", "java\nscript:alert(1) 1x", "https://ok.example/a.png 1x, java\tscript:alert(1)"]) {
-      for (const [tag, attr] of [["img", "srcset"], ["my-card", "srcset"], ["my-card", "ping"]] as const) {
+      for (const [tag, attr] of [
+        ["img", "srcset"],
+        ["my-card", "srcset"],
+        ["my-card", "ping"],
+      ] as const) {
         const frag = document.createDocumentFragment();
         const el = document.createElement(tag);
         el.setAttribute(attr, bad);

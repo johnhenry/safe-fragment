@@ -48,6 +48,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "fuzz": "node scripts/fuzz.mjs",
     "examples": "npm run build && vitest run --config vitest.examples.config.ts",
     "prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build",
     "test:dist": "npm run build && vitest run --config vitest.dist.config.ts"
