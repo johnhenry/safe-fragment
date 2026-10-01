@@ -6,6 +6,7 @@ import { buildBaselineConfig } from "./config.js";
 import { sanitizeWithNative } from "./native.js";
 import { sanitizeWithDOMPurify } from "./dompurify.js";
 import { enforceProfile } from "./enforce.js";
+import { rebuildFragment } from "./rebuild.js";
 
 export interface SanitizeOptions {
   /** Force a specific engine, bypassing feature detection. Test-only; not exposed on the public custom-element API. */
@@ -77,6 +78,8 @@ export async function sanitize(
   }
 
   const { removedElements, removedAttributes, rewrittenUrls } = enforceProfile(fragment, profile, customElements, { baseUrl: doc.baseURI });
+
+  fragment = rebuildFragment(fragment);
 
   const outputLength = serializedLength(fragment);
 

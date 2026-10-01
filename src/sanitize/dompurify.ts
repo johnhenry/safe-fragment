@@ -7,6 +7,7 @@ import { SafeFragmentError } from "../errors.js";
  * everywhere.
  */
 interface DOMPurifyLike {
+  addHook(name: string, hook: (node: Element) => void): void;
   sanitize(dirty: string, config: Record<string, unknown>): DocumentFragment;
 }
 
@@ -47,6 +48,13 @@ export async function sanitizeWithDOMPurify(doc: Document, html: string, baselin
     throw new SafeFragmentError("SANITIZER_UNAVAILABLE", "Failed to initialize DOMPurify against the target window.", { cause });
   }
 
+  // DOMPurify force-removes (subtree and all) any element carrying `is=`; the
+  // native engine just drops the attribute. Normalize to the latter so both
+  // engines keep the element and lose only the customized-built-in hook.
+  purify.addHook("beforeSanitizeAttributes", (node) => {
+    if (node.nodeType === 1 && node.hasAttribute("is")) node.removeAttribute("is");
+  });
+
   try {
     const fragment = purify.sanitize(html, {
       // The locked allowlist -- see module doc comment above.
@@ -56,7 +64,10 @@ export async function sanitizeWithDOMPurify(doc: Document, html: string, baselin
       ALLOW_UNKNOWN_PROTOCOLS: false,
       ALLOW_SELF_CLOSE_IN_ATTR: false,
       WHOLE_DOCUMENT: false,
-      FORCE_BODY: false,
+      // Parse in <body> context, like the native engine's <div> context.
+      // Without it a leading <noscript>/<title>/<style>/<meta> is parsed into
+      // <head> and the two engines diverge (ADR 0004).
+      FORCE_BODY: true,
       SANITIZE_DOM: true,
       // Deliberately false: enforceProfile namespaces every id itself
       // (identically for both engines) and rewrites references; letting
@@ -73,6 +84,11 @@ export async function sanitizeWithDOMPurify(doc: Document, html: string, baselin
       // regardless, is the actual authoritative allowlist boundary for
       // which *elements* survive, not this flag.
       KEEP_CONTENT: true,
+      // Replaces (not extends) DOMPurify's default FORBID_CONTENTS so the
+      // set of subtree-dropped elements is exactly ours, identical to the
+      // native engine's `removeElements` and enforceProfile's drop list
+      // (ADR 0004). Every other disallowed element is unwrapped.
+      FORBID_CONTENTS: baseline.dropSubtreeElements,
 
       RETURN_DOM_FRAGMENT: true,
       RETURN_DOM: false,

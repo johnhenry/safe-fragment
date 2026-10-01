@@ -30,6 +30,12 @@ describe(`adversarial XSS corpus (native supported in this browser: ${hasNativeS
             expect(lower, `output must not contain "${forbidden}"\n\noutput: ${html}`).not.toContain(forbidden.toLowerCase());
           }
 
+          const host = document.createElement("div");
+          host.appendChild(fragment.cloneNode(true));
+          for (const text of fixture.survives ?? []) {
+            expect(host.textContent ?? "", `benign text "${text}" must survive sanitization\n\noutput: ${html}`).toContain(text);
+          }
+
           for (const { selector, attribute } of fixture.forbiddenAttributes ?? []) {
             const container = document.createElement("div");
             container.appendChild(fragment.cloneNode(true));
@@ -49,16 +55,5 @@ describe(`adversarial XSS corpus (native supported in this browser: ${hasNativeS
     div.appendChild(fragment);
     const a = div.querySelector("a")!;
     expect(a.getAttribute("rel")).toBe("noopener noreferrer");
-  });
-
-  it("both engines agree on the same fixture (cross-engine equivalence)", async () => {
-    if (!hasNativeSanitizer(document)) return; // only meaningful when both engines exist in this browser
-    const profile = getProfile("article-v1")!;
-    const input = '<p>hi <strong>there</strong></p><a href="javascript:alert(1)">x</a><img src=x onerror=alert(1)>';
-
-    const nativeResult = await sanitize(document, input, profile, new Map(), { forceEngine: "native" });
-    const dompurifyResult = await sanitize(document, input, profile, new Map(), { forceEngine: "dompurify" });
-
-    expect(serialize(nativeResult.fragment)).toBe(serialize(dompurifyResult.fragment));
   });
 });

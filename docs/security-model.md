@@ -41,6 +41,8 @@ string  ──▶  engine (native setHTML | DOMPurify)  ──▶  enforceProfil
      (`Element.prototype.setHTML`) and use it when available; otherwise
      DOMPurify, configured with an explicit allowlist derived from the
      profile (never DOMPurify's own defaults).
+   - Both engines parse inside an inert document (no browsing context),
+     in `<body>` context, so the same input yields the same tree in both.
    - Either way, the result is a **detached** `DocumentFragment` --
      nothing has touched the live document yet, so even a hypothetical
      `<img>` with a bad `src` that survived this far cannot have started
@@ -50,9 +52,17 @@ string  ──▶  engine (native setHTML | DOMPurify)  ──▶  enforceProfil
    allowlist pass, run identically regardless of which engine produced the
    fragment:
    - Walks every element via `fragment.querySelectorAll("*")`.
-   - Removes any element whose tag is not in the profile's `elements` map
-     (and, for `ui-v1`, not an application-registered custom element) --
-     **the whole subtree goes with it**, it is not unwrapped.
+   - Handles any element whose tag is not in the profile's `elements` map
+     (and, for `ui-v1`, not an application-registered custom element) one
+     way for both engines ([ADR 0004](adr/0004-disallowed-elements-unwrap-or-drop.md)):
+     dangerous/raw-text containers (`script`, `style`, `template`,
+     `noscript`, `iframe`, `noembed`, `noframes`, `xmp`, `textarea`,
+     `title`, `select`, `object`, `embed`, `svg`, `math`, and anything
+     outside the HTML namespace) are **dropped with their whole subtree**;
+     every other disallowed element (unknown, presentational, table cells
+     in a profile without tables, unregistered custom elements) is
+     **unwrapped**: the element goes, its text and allowed descendants
+     stay.
    - For elements that survive, removes any attribute not on that
      element's specific allowed-attribute list, with three hardcoded
      exceptions that apply regardless of profile configuration:

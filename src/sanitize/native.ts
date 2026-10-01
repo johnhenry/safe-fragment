@@ -22,12 +22,19 @@ interface SetHTMLCapableElement extends Element {
 
 /**
  * Parses `html` via the native `Element.setHTML` (HTML Sanitizer API),
- * entirely into a detached `<template>` so nothing is ever inserted into a
- * live document before it has been through both this engine's own
- * structural stripping AND the shared `enforceProfile` pass -- a detached
- * `template.content` fragment never fetches resources (`<img src>` does
- * not load, so a stray `onerror` handler an engine bug somehow missed
- * still cannot fire before `enforceProfile` removes it).
+ * entirely inside an INERT document (`DOMImplementation#createHTMLDocument`
+ * has no browsing context, so nothing fetches and nothing runs) rather than
+ * the live one, so no `<img src>` starts loading before `enforceProfile`
+ * has run. The parse context is a `<div>` so fragment parsing behaves like
+ * DOMPurify's `<body>` context (a `<template>` context would let stray
+ * `<td>`/`<tr>` survive in one engine and not the other).
+ *
+ * Config shape (ADR 0004): a *blocklist* for elements (`removeElements`:
+ * the raw-text/foreign/embedding containers whose subtree must go) and an
+ * allowlist for attributes. Unknown or merely-not-allowed elements are left
+ * for `enforceProfile`, which unwraps them -- the native default of
+ * dropping the whole subtree of any unlisted element would diverge from
+ * DOMPurify's `KEEP_CONTENT` behavior.
  *
  * Only called after `hasNativeSanitizer()` has confirmed `setHTML` exists;
  * throws `SANITIZE_FAILED` if the call itself throws (malformed config,
@@ -35,28 +42,24 @@ interface SetHTMLCapableElement extends Element {
  * parse.
  */
 export function sanitizeWithNative(doc: Document, html: string, baseline: BaselineConfig): DocumentFragment {
-  const template = doc.createElement("template") as unknown as SetHTMLCapableElement;
+  const inert = doc.implementation.createHTMLDocument("");
+  const container = inert.createElement("div") as unknown as SetHTMLCapableElement;
   const config: NativeSanitizerConfig = {
-    elements: baseline.allowedElements,
+    removeElements: baseline.dropSubtreeElements,
     attributes: baseline.allowedAttributes,
     comments: false,
     dataAttributes: false,
   };
 
   try {
-    template.setHTML(html, { sanitizer: config });
+    container.setHTML(html, { sanitizer: config });
   } catch (cause) {
     throw new SafeFragmentError("SANITIZE_FAILED", "Native Sanitizer API (setHTML) threw while sanitizing input.", {
       cause,
     });
   }
 
-  const templateEl = template as unknown as HTMLTemplateElement;
-  const frag = doc.createDocumentFragment();
-  // Per the HTML fragment-parsing algorithm, a <template> context node's
-  // result lands in `.content`; defensively also drain `.childNodes` in
-  // case of a nonstandard implementation that appended there instead.
-  const source: Node = templateEl.content && templateEl.content.childNodes.length > 0 ? templateEl.content : templateEl;
-  while (source.firstChild) frag.appendChild(source.firstChild);
+  const frag = inert.createDocumentFragment();
+  while (container.firstChild) frag.appendChild(container.firstChild);
   return frag;
 }

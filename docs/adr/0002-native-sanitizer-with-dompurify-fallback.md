@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. See [ADR 0004](0004-disallowed-elements-unwrap-or-drop.md) for the later decision on what happens to a disallowed element's content.
 
 ## Context
 

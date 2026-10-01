@@ -21,6 +21,8 @@ export interface XssFixture {
   forbiddenSubstrings: string[];
   /** Attributes that, if the selector matches an element in the output, must be absent from it. */
   forbiddenAttributes?: ForbiddenAttribute[];
+  /** Benign text that must STILL be in the output's textContent (a sanitizer that deletes everything must not pass). */
+  survives?: string[];
 }
 
 export const XSS_CORPUS: XssFixture[] = [
@@ -30,6 +32,7 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<p>hi</p><img src=x onerror="alert(1)">',
     forbiddenSubstrings: ["onerror", "alert(1)"],
     forbiddenAttributes: [{ selector: "img", attribute: "onerror" }],
+    survives: ["hi"],
   },
   {
     name: "a href javascript: URL",
@@ -37,6 +40,7 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<a href="javascript:alert(1)">click</a>',
     forbiddenSubstrings: ["javascript:"],
     forbiddenAttributes: [{ selector: "a", attribute: "href" }],
+    survives: ["click"],
   },
   {
     name: "a href javascript: URL, mixed case",
@@ -44,6 +48,7 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<a href="JaVaScRiPt:alert(1)">click</a>',
     forbiddenSubstrings: ["avascript:", "alert(1)"],
     forbiddenAttributes: [{ selector: "a", attribute: "href" }],
+    survives: ["click"],
   },
   {
     name: "a href javascript: URL, tab-obfuscated scheme",
@@ -51,6 +56,7 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<a href="java&#x09;script:alert(1)">click</a>',
     forbiddenSubstrings: ["javascript:", "alert(1)"],
     forbiddenAttributes: [{ selector: "a", attribute: "href" }],
+    survives: ["click"],
   },
   {
     name: "a href javascript: URL, numeric-entity-encoded scheme",
@@ -58,6 +64,7 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<a href="&#106;avascript:alert(1)">click</a>',
     forbiddenSubstrings: ["javascript:", "alert(1)"],
     forbiddenAttributes: [{ selector: "a", attribute: "href" }],
+    survives: ["click"],
   },
   {
     name: "a href javascript: URL, leading-whitespace-obfuscated",
@@ -65,6 +72,7 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<a href="  javascript:alert(1)">click</a>',
     forbiddenSubstrings: ["javascript:", "alert(1)"],
     forbiddenAttributes: [{ selector: "a", attribute: "href" }],
+    survives: ["click"],
   },
   {
     name: "a href data: URL",
@@ -72,6 +80,7 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<a href="data:text/html,<script>alert(1)</script>">click</a>',
     forbiddenSubstrings: ["data:text/html", "<script>"],
     forbiddenAttributes: [{ selector: "a", attribute: "href" }],
+    survives: ["click"],
   },
   {
     name: "img src vbscript: URL",
@@ -86,12 +95,14 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<a href="file:///etc/passwd">click</a>',
     forbiddenSubstrings: ["file:"],
     forbiddenAttributes: [{ selector: "a", attribute: "href" }],
+    survives: ["click"],
   },
   {
     name: "svg onload",
     profile: "article-v1",
     input: '<p>before</p><svg onload="alert(1)"><circle r="5"/></svg><p>after</p>',
     forbiddenSubstrings: ["<svg", "onload", "<circle"],
+    survives: ["before", "after"],
   },
   {
     name: "svg with embedded script element",
@@ -110,6 +121,7 @@ export const XSS_CORPUS: XssFixture[] = [
     profile: "ui-v1",
     input: '<form><button formaction="javascript:alert(1)">go</button></form>',
     forbiddenSubstrings: ["<form", "formaction", "javascript:"],
+    survives: ["go"],
   },
   {
     name: "button formaction on allowed element",
@@ -117,6 +129,7 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<button type="button" formaction="javascript:alert(1)">go</button>',
     forbiddenSubstrings: ["formaction", "javascript:"],
     forbiddenAttributes: [{ selector: "button", attribute: "formaction" }],
+    survives: ["go"],
   },
   {
     name: "iframe srcdoc abuse",
@@ -135,6 +148,7 @@ export const XSS_CORPUS: XssFixture[] = [
     profile: "article-v1",
     input: '<a href="https://good.example/"><a href="javascript:alert(1)">nested</a></a>',
     forbiddenSubstrings: ["javascript:"],
+    survives: ["nested"],
   },
   {
     name: "noscript/title parser-confusion (mXSS-style)",
@@ -154,18 +168,21 @@ export const XSS_CORPUS: XssFixture[] = [
     input: '<p style="background:url(javascript:alert(1))">x</p>',
     forbiddenSubstrings: ["javascript:", 'style="'],
     forbiddenAttributes: [{ selector: "p", attribute: "style" }],
+    survives: ["x"],
   },
   {
     name: "unregistered custom element abuse (ui-v1)",
     profile: "ui-v1",
     input: '<evil-widget onclick="alert(1)">x</evil-widget>',
     forbiddenSubstrings: ["evil-widget", "onclick", "alert(1)"],
+    survives: ["x"],
   },
   {
     name: "customized built-in element (is= abuse)",
     profile: "article-v1",
     input: '<span is="evil-span" onclick="alert(1)">x</span>',
     forbiddenSubstrings: ["onclick", "is=", "evil-span"],
+    survives: ["x"],
   },
   {
     name: "meta refresh redirect abuse",
@@ -178,24 +195,28 @@ export const XSS_CORPUS: XssFixture[] = [
     profile: "article-v1",
     input: '<base href="https://evil.example/"><a href="/x">x</a>',
     forbiddenSubstrings: ["<base"],
+    survives: ["x"],
   },
   {
     name: "on* attribute family, exhaustive-ish sample",
     profile: "article-v1",
     input: '<p onmouseover="alert(1)" onfocus="alert(1)" onanimationstart="alert(1)">x</p>',
     forbiddenSubstrings: ["onmouseover", "onfocus", "onanimationstart", "alert(1)"],
+    survives: ["x"],
   },
   {
     name: "target=_blank without rel gets rel forced",
     profile: "article-v1",
     input: '<a href="https://good.example/" target="_blank">x</a>',
     forbiddenSubstrings: [],
+    survives: ["x"],
   },
   {
     name: "comment-based mXSS smuggling attempt",
     profile: "article-v1",
     input: "<p>safe<!--<img src=x onerror=alert(1)>--></p>",
     forbiddenSubstrings: ["onerror"],
+    survives: ["safe"],
   },
   {
     name: "template element smuggling",

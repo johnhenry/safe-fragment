@@ -160,11 +160,60 @@ describe("enforceProfile", () => {
     expect(serialize(frag)).not.toContain("comment");
   });
 
-  it("removes unregistered custom elements under ui-v1", () => {
+  it("unwraps unregistered custom elements under ui-v1, keeping their text", () => {
     const frag = fragmentFromHtml("<my-widget>x</my-widget>");
     const { removedElements } = enforceProfile(frag, UI_V1, new Map());
-    expect(frag.childNodes.length).toBe(0);
-    expect(removedElements.some((n) => n.reason === "custom-element-not-registered")).toBe(true);
+    expect(serialize(frag)).toBe("x");
+    expect(removedElements.some((n) => n.reason === "element-unwrapped:custom-element-not-registered")).toBe(true);
+  });
+
+  describe("disallowed elements: one behavior (ADR 0004)", () => {
+    it("unwraps ordinary disallowed elements, keeping text and allowed descendants", () => {
+      const frag = fragmentFromHtml("<p>a <marquee>b <em>c</em></marquee> d</p>");
+      const { removedElements } = enforceProfile(frag, ARTICLE_V1, new Map());
+      expect(serialize(frag)).toBe("<p>a b <em>c</em> d</p>");
+      expect(removedElements).toEqual([{ tag: "marquee", reason: "element-unwrapped:not-in-profile" }]);
+    });
+
+    it("unwraps nested disallowed elements all the way down, still enforcing every descendant", () => {
+      const frag = fragmentFromHtml('<blink><font>x<a href="javascript:evil()" onclick="evil()">y</a></font></blink>');
+      enforceProfile(frag, ARTICLE_V1, new Map());
+      expect(serialize(frag)).toBe("x<a>y</a>");
+    });
+
+    it.each(["script", "style", "template", "noscript", "iframe", "noembed", "noframes", "xmp", "textarea", "title", "select", "object", "embed"])(
+      "drops <%s> with its whole subtree",
+      (tag) => {
+        const t = document.createElement("template");
+        const el = document.createElement(tag);
+        el.appendChild(document.createTextNode("PAYLOAD"));
+        t.content.append(document.createTextNode("keep"), el);
+        const { removedElements } = enforceProfile(t.content, ARTICLE_V1, new Map());
+        expect(serialize(t.content)).toBe("keep");
+        expect(removedElements.some((n) => n.tag === tag && n.reason === "element-dropped:dangerous-container")).toBe(true);
+      },
+    );
+
+    it("drops svg/math subtrees, and any foreign-namespace element regardless of tag name", () => {
+      const t = document.createElement("template");
+      const svgA = document.createElementNS("http://www.w3.org/2000/svg", "a");
+      svgA.setAttribute("href", "https://ok.example/");
+      svgA.textContent = "svg link text";
+      t.content.append(document.createTextNode("keep"), svgA);
+      const { removedElements } = enforceProfile(t.content, ARTICLE_V1, new Map());
+      expect(serialize(t.content)).toBe("keep");
+      expect(removedElements[0]!.reason).toBe("element-dropped:foreign-namespace");
+
+      const frag = fragmentFromHtml("<p>x</p><svg><text>t</text></svg><math><mi>m</mi></math>");
+      enforceProfile(frag, ARTICLE_V1, new Map());
+      expect(serialize(frag)).toBe("<p>x</p>");
+    });
+
+    it("table cells are unwrapped in a profile without tables", () => {
+      const frag = fragmentFromHtml("<table><tbody><tr><td>one</td><td>two</td></tr></tbody></table>");
+      enforceProfile(frag, UI_V1, new Map());
+      expect(serialize(frag)).toBe("onetwo");
+    });
   });
 
   it("keeps application-registered custom elements and their allowed attributes only", () => {

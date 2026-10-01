@@ -1,8 +1,10 @@
 import type { ProfileDefinition, CustomElementAllowlistEntry } from "../policy/profile.js";
 import type { SanitizationNote } from "../types.js";
 import { checkUrl } from "../policy/url.js";
+import { DROP_SUBTREE_ELEMENTS, HTML_NAMESPACE } from "./dangerous.js";
 
 const SNIPPET_MAX_LENGTH = 60;
+const DROP_SUBTREE: ReadonlySet<string> = new Set(DROP_SUBTREE_ELEMENTS);
 
 /**
  * Attribute names that are never permitted on any element, regardless of
@@ -134,26 +136,42 @@ export function enforceProfile(
 
   stripComments(fragment);
 
-  // Snapshot first: `el.remove()` below can detach nodes we haven't
-  // visited yet (their whole subtree goes with them), so re-check
+  // Snapshot first: dropping an element detaches nodes we haven't visited
+  // yet (their whole subtree goes with it), so re-check
   // `fragment.contains(el)` per element rather than assuming the static
-  // list stays valid.
+  // list stays valid. Unwrapped elements' children stay in the fragment
+  // and are visited later in document order.
   const elements = [...fragment.querySelectorAll<Element>("*")];
 
   for (const el of elements) {
     if (!fragment.contains(el)) continue; // already removed as part of an ancestor's subtree
 
     const tag = el.tagName.toLowerCase();
+
+    // Foreign (SVG/MathML) elements and raw-text/embedding containers are
+    // dropped with their whole subtree, whatever their tag name (an SVG
+    // <a> or <title> must never be mistaken for the HTML one).
+    if (el.namespaceURI !== HTML_NAMESPACE) {
+      removedElements.push({ tag, reason: "element-dropped:foreign-namespace" });
+      el.remove();
+      continue;
+    }
+
     const builtinAttrs = profile.elements[tag];
     const customEntry = profile.allowCustomElements && tag.includes("-") ? customElements.get(tag) : undefined;
     const allowedAttrs = builtinAttrs ?? customEntry?.attributes;
 
     if (allowedAttrs === undefined) {
-      removedElements.push({
-        tag,
-        reason: tag.includes("-") ? "custom-element-not-registered" : "element-not-in-profile",
-      });
-      el.remove();
+      if (DROP_SUBTREE.has(tag)) {
+        removedElements.push({ tag, reason: "element-dropped:dangerous-container" });
+        el.remove();
+      } else {
+        // Every other non-allowed element is unwrapped: the element goes,
+        // its text and (separately enforced) descendants stay. This is the
+        // single cross-engine behavior; see ADR 0004.
+        removedElements.push({ tag, reason: tag.includes("-") ? "element-unwrapped:custom-element-not-registered" : "element-unwrapped:not-in-profile" });
+        el.replaceWith(...el.childNodes);
+      }
       continue;
     }
 

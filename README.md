@@ -54,8 +54,8 @@ see [Security model](#security-model) below.
   [ADR 0001](docs/adr/0001-html-as-data-not-code.md).
 - **Every render goes through a closed, versioned allowlist**, not a
   denylist. An element or attribute not explicitly listed in the active
-  profile is removed -- including its entire subtree, for disallowed
-  elements -- never "escaped and left in place."
+  profile is removed -- dangerous containers with their whole subtree, other
+  disallowed elements unwrapped (ADR 0004) -- never "escaped and left in place."
 - **URL-scheme filtering uses the platform `URL` parser, never regex.**
   `javascript:`, `data:`, `vbscript:`, and `file:` URLs are rejected
   under every shipped profile, including whitespace/entity/case-obfuscated

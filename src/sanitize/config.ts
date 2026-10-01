@@ -1,3 +1,4 @@
+import { DROP_SUBTREE_ELEMENTS } from "./dangerous.js";
 import type { ProfileDefinition, CustomElementAllowlistEntry } from "../policy/profile.js";
 
 /**
@@ -16,6 +17,8 @@ import type { ProfileDefinition, CustomElementAllowlistEntry } from "../policy/p
  * runs afterward on the resulting DOM tree either way.
  */
 export interface BaselineConfig {
+  /** Raw-text/foreign/embedding containers dropped with their subtree when not allowed (see ./dangerous.ts, ADR 0004). */
+  dropSubtreeElements: string[];
   allowedElements: string[];
   allowedAttributes: string[];
   allowCustomElements: boolean;
@@ -41,6 +44,7 @@ export function buildBaselineConfig(profile: ProfileDefinition, customElements: 
   for (const name of profile.allowedDataAttributes) allowedAttributes.add(name);
 
   return {
+    dropSubtreeElements: [...DROP_SUBTREE_ELEMENTS],
     allowedElements: [...allowedElements],
     allowedAttributes: [...allowedAttributes],
     allowCustomElements: profile.allowCustomElements,
