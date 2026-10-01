@@ -61,7 +61,6 @@ function inventoryOf(root: ParentNode): Inventory {
   const attributes = new Map<string, number>();
   for (const el of root.querySelectorAll("*")) {
     const tag = el.localName;
-    if (tag === "html" || tag === "head" || tag === "body") continue; // DOMParser's implied wrappers
     elements.set(tag, (elements.get(tag) ?? 0) + 1);
     for (const attr of el.attributes) {
       const key = `${tag}\u0000${attr.name.toLowerCase()}`;
@@ -73,21 +72,20 @@ function inventoryOf(root: ParentNode): Inventory {
 
 /**
  * The native engine reports nothing about what it removed. To keep the
- * `SanitizationReport` honest, parse the same input a second time into an
- * INERT document (no browsing context: nothing loads or runs) and diff the
- * element/attribute inventories against the engine's output. If a
- * `DOMParser` is not usable (e.g. Trusted Types enforced, which gates
- * `parseFromString`), fall back to a second `setHTML` with a permissive
- * blocklist-only config, which still reveals everything OUR config removed
- * (only the engine's unconditional script/handler baseline goes uncounted).
+ * `SanitizationReport` honest, parse the same input a second time with a
+ * permissive blocklist-only `setHTML` config in the same INERT document (no
+ * browsing context: nothing loads or runs) and diff the element/attribute
+ * inventories against the engine's output. That reveals everything OUR
+ * config removed. It cannot reveal the engine's own unconditional baseline
+ * (`<script>`, `on*` handlers): every safe `setHTML` strips those whatever
+ * the config says, and the only way to see them is `DOMParser`/`innerHTML`
+ * on the raw string, which is a Trusted Types sink -- under
+ * `require-trusted-types-for 'script'` that is a blocked action, a
+ * `securitypolicyviolation` and a CSP report on EVERY sanitization (#12).
+ * There is no way to detect enforcement without triggering it, so no gated
+ * sink is ever used, anywhere (ADR 0007, safe-fragment#8).
  */
-function parseInputInventory(doc: Document, html: string, inert: Document): Inventory | undefined {
-  try {
-    const win = doc.defaultView as (Window & { DOMParser?: typeof DOMParser }) | null;
-    if (win?.DOMParser) return inventoryOf(new win.DOMParser().parseFromString(html, "text/html"));
-  } catch {
-    // fall through to the setHTML-based inventory
-  }
+function parseInputInventory(html: string, inert: Document): Inventory | undefined {
   try {
     const probe = inert.createElement("div") as unknown as SetHTMLCapableElement;
     probe.setHTML(html, { sanitizer: { removeElements: [] } as NativeSanitizerConfig });
@@ -138,6 +136,6 @@ export function sanitizeWithNative(doc: Document, html: string, baseline: Baseli
   const frag = inert.createDocumentFragment();
   while (container.firstChild) frag.appendChild(container.firstChild);
 
-  const removed = diffInventories(parseInputInventory(doc, html, inert), inventoryOf(frag));
+  const removed = diffInventories(parseInputInventory(html, inert), inventoryOf(frag));
   return { fragment: frag, removedElements: removed.elements, removedAttributes: removed.attributes };
 }

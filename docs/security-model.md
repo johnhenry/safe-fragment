@@ -11,7 +11,8 @@ sinks), [ADR 0002](adr/0002-native-sanitizer-with-dompurify-fallback.md)
 [ADR 0003](adr/0003-shadow-dom-is-not-sandboxing.md) (why `scope="shadow"`
 is styling encapsulation, not isolation) and
 [ADR 0004](adr/0004-disallowed-elements-unwrap-or-drop.md) (what happens to
-a disallowed element's content, identically in both engines).
+a disallowed element's content, identically in both engines) and
+[ADR 0007](adr/0007-no-gated-sink-in-the-native-report.md) (no Trusted-Types-gated sink, even for the report).
 
 ## The pipeline, precisely
 
@@ -63,9 +64,13 @@ of it.
      allowlist for attributes; DOMPurify runs with `KEEP_CONTENT: true` and
      `FORBID_CONTENTS` set to the same dangerous-container list. Neither
      config needs to be perfect: step 7 is the boundary.
-   - What the engine removed is reported: DOMPurify via its `removed` log; the
-     native engine via a diff of an inert second parse against its output (see
-     safe-fragment#8 for the Trusted Types caveat).
+   - What the engine removed is reported: DOMPurify via its `removed` log
+     (minus its own scaffolding: the `<remove>` sentinel and the `<body>`
+     wrapper, so a benign input reports nothing); the native engine via a diff
+     of a permissive second `setHTML` in the same inert document against its
+     output. The native diff cannot see the engine's unconditional baseline
+     removals (`<script>`, `<iframe>`, `on*`, `javascript:` URLs); see
+     [ADR 0007](adr/0007-no-gated-sink-in-the-native-report.md).
 7. **`enforceProfile()`** (`src/sanitize/enforce.ts`) -- the authoritative
    allowlist pass, run identically regardless of which engine produced the
    fragment:
@@ -163,7 +168,10 @@ time-limited. Specifically:
 ## Trusted Types
 
 `<safe-fragment>` works under `require-trusted-types-for 'script'`. The
-native path uses `setHTML` (not gated). The DOMPurify path registers one
+native path uses `setHTML` (not gated), and no sink that Trusted Types gates
+is ever called with a string, so sanitizing produces **zero** violations and
+CSP reports in every engine (tested with a `securitypolicyviolation`
+listener; [ADR 0007](adr/0007-no-gated-sink-in-the-native-report.md)). The DOMPurify path registers one
 `dompurify` policy per window (add `dompurify` to your `trusted-types` list;
 `'allow-duplicates'` is not needed). `<example-sandbox>` is a different
 component with its own policy name (`safe-fragment-sandbox`); see the README.

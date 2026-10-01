@@ -418,7 +418,7 @@ Known gaps (each has an issue):
 - **DOMPurify's cost is quadratic in removed nodes**: `maxInputLength` bounds it, it does not remove it ([safe-fragment#5](https://github.com/johnhenry/safe-fragment/issues/5)).
 - **`article-v1`/`ui-v1` keep relative `img src`**, a same-origin GET on render; opt in to `blockRelativeAutoLoadUrls` ([safe-fragment#6](https://github.com/johnhenry/safe-fragment/issues/6)).
 - **`ui-v1` allows `class`**, which can match host selectors ([safe-fragment#7](https://github.com/johnhenry/safe-fragment/issues/7)).
-- **The native path's report cannot count the engine's own baseline removals under Trusted Types** ([safe-fragment#8](https://github.com/johnhenry/safe-fragment/issues/8)); on DOMPurify it is complete.
+- **The native path's report cannot count the engine's own unconditional removals** (`<script>`, `<iframe>`, `on*` handlers, `javascript:` URLs; [safe-fragment#8](https://github.com/johnhenry/safe-fragment/issues/8), [ADR 0007](docs/adr/0007-no-gated-sink-in-the-native-report.md)): counting them needs a Trusted-Types-gated parse, which this package never makes, so sanitizing produces zero CSP violations. It lists everything the profile removed, and on DOMPurify the log also includes those baseline removals.
 - `loading="lazy"` falls back to eager rendering when `IntersectionObserver` is missing (rather than never rendering).
 - `FETCH_ABORTED`/`FETCH_SUPERSEDED` are reported through `render()`'s result only, never as events: an abort you caused is not a failure.
 

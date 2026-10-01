@@ -46,7 +46,7 @@ describe("report precision: a benign input reports nothing removed (safe-fragmen
 describe("report parity: both engines list the same genuinely removed nodes", () => {
   const inputs: Array<[string, string]> = [
     ["unknown elements", "<p>a</p><marquee>m</marquee><blink>b</blink>"],
-    ["dangerous containers", "<p>a</p><style>p{}</style><iframe src=x></iframe><textarea>t</textarea>"],
+    ["dangerous containers", "<p>a</p><style>p{}</style><textarea>t</textarea>"],
     ["disallowed attributes", '<p style="color:red" data-x="1" foo="2">a</p>'],
     ["inside a table-less profile", "<table><tr><td>c</td></tr></table>"],
   ];

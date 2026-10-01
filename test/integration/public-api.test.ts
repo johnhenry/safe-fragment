@@ -118,14 +118,21 @@ describe("SanitizationReport counts what BOTH engine and enforceProfile removed"
       const { report } = await sanitize(document, input, getProfile("article-v1")!, { forceEngine: engine });
       const els = report.removedElements.map((n) => n.tag);
       const attrs = report.removedAttributes.map((n) => `${n.tag}.${n.attribute}`);
-      expect(els).toEqual(expect.arrayContaining(["script", "marquee", "svg"]));
-      expect(attrs).toEqual(expect.arrayContaining(["p.onclick", "img.onerror", "p.style"]));
-      // the engine itself strips javascript: hrefs before enforceProfile runs; either way it is reported
-      expect([...attrs, ...report.rewrittenUrls.map((n) => `${n.tag}.${n.attribute}`)]).toContain("a.href");
+      // What OUR config removes is reported by both engines.
+      expect(els).toEqual(expect.arrayContaining(["marquee", "svg"]));
+      expect(attrs).toEqual(expect.arrayContaining(["p.style"]));
+      // The native engine's unconditional baseline (<script>, on* handlers) is invisible to
+      // it without a Trusted-Types-gated second parse (ADR 0007); DOMPurify's log has it.
+      if (engine === "dompurify") {
+        expect(els).toContain("script");
+        expect(attrs).toEqual(expect.arrayContaining(["p.onclick", "img.onerror"]));
+        // DOMPurify strips javascript: hrefs before enforceProfile runs; either way it is reported
+        expect([...attrs, ...report.rewrittenUrls.map((n) => `${n.tag}.${n.attribute}`)]).toContain("a.href");
+      }
     });
   }
 
-  it("native engine still reports under an enforced Trusted Types policy (DOMParser is gated)", async () => {
+  it("native engine still reports what its config removed under an enforced Trusted Types policy", async () => {
     if (!hasNativeSanitizer(document)) return;
     const iframe = document.createElement("iframe");
     iframe.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="require-trusted-types-for 'script'; trusted-types dompurify">`;
@@ -136,8 +143,8 @@ describe("SanitizationReport counts what BOTH engine and enforceProfile removed"
     const { report } = await sanitize(iframe.contentDocument!, '<p data-x="1">x<marquee>m</marquee></p>', getProfile("article-v1")!, {
       forceEngine: "native",
     });
-    // DOMParser is gated here, so the fallback probe reveals what OUR config removed (data-x); the
-    // engine's unconditional script/handler baseline is the one thing this fallback cannot count.
+    // The probe is a permissive setHTML (no gated sink), so it reveals what OUR config removed
+    // (data-x, marquee); the engine's unconditional script/handler baseline is not countable.
     expect(report.removedAttributes.map((n) => n.attribute)).toContain("data-x");
     expect(report.removedElements.map((n) => n.tag)).toContain("marquee");
     iframe.remove();
