@@ -49,5 +49,4 @@ describe("shipped profile shape invariants", () => {
     expect(EMAIL_V1.allowCustomElements).toBe(false);
     expect(PLAIN_TEXT_V1.allowCustomElements).toBe(false);
   });
-
 });

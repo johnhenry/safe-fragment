@@ -7,7 +7,19 @@ const GLOBAL_ATTRS = Object.freeze(["id", "lang", "dir", "title", "class"]);
 // attribute is allowed too (allowDataAttributes: true below) since
 // application UI markup routinely carries its own data attributes for CSS
 // hooks/JS state that the *application*, not this library, reads.
-const INTERACTIVE_ATTRS = Object.freeze([...GLOBAL_ATTRS, "data-action", "role", "tabindex", "aria-label", "aria-hidden", "aria-expanded", "aria-controls"]);
+const INTERACTIVE_ATTRS = Object.freeze([
+  ...GLOBAL_ATTRS,
+  "data-action",
+  "role",
+  "tabindex",
+  "aria-label",
+  "aria-hidden",
+  "aria-expanded",
+  "aria-controls",
+  "aria-labelledby",
+  "aria-describedby",
+  "aria-owns",
+]);
 
 /**
  * `ui-v1` -- structural/interactive application UI: layout containers,

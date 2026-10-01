@@ -58,7 +58,10 @@ export async function sanitizeWithDOMPurify(doc: Document, html: string, baselin
       WHOLE_DOCUMENT: false,
       FORCE_BODY: false,
       SANITIZE_DOM: true,
-      SANITIZE_NAMED_PROPS: true,
+      // Deliberately false: enforceProfile namespaces every id itself
+      // (identically for both engines) and rewrites references; letting
+      // DOMPurify prefix too would double-prefix and desync references.
+      SANITIZE_NAMED_PROPS: false,
       // KEEP_CONTENT: true is required for DOMPurify to keep ordinary text
       // nodes inside ALLOWED elements at all (its ALLOWED_TAGS list is
       // otherwise interpreted as also excluding "#text" itself, which

@@ -26,6 +26,80 @@ function snippet(value: string): string {
   return collapsed.length > SNIPPET_MAX_LENGTH ? `${collapsed.slice(0, SNIPPET_MAX_LENGTH)}…` : collapsed;
 }
 
+/**
+ * Prefix applied to every surviving `id` (and to every in-fragment
+ * reference to one). Closes DOM clobbering: with this prefix an author can
+ * never create `window.scriptUrl`, shadow `document.getElementById("app")`
+ * or collide with the host page's own ids, no matter which sanitization
+ * engine ran. Both engines are configured NOT to prefix on their own
+ * (DOMPurify `SANITIZE_NAMED_PROPS: false`) so ids are never double-prefixed.
+ */
+export const ID_PREFIX = "user-content-";
+
+/** Attributes whose value is a single id reference. */
+const ID_REF_ATTRS = new Set(["for", "list", "aria-activedescendant"]);
+/** Attributes whose value is a whitespace-separated list of id references. */
+const ID_REF_LIST_ATTRS = new Set([
+  "headers",
+  "aria-controls",
+  "aria-labelledby",
+  "aria-describedby",
+  "aria-owns",
+  "aria-details",
+  "aria-errormessage",
+  "aria-flowto",
+]);
+
+function isAsciiWhitespace(code: number): boolean {
+  return code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0c || code === 0x0d;
+}
+
+/** Splits on ASCII whitespace by character scan (not a regex). */
+function splitTokens(value: string): string[] {
+  const tokens: string[] = [];
+  let start = -1;
+  for (let i = 0; i <= value.length; i++) {
+    const ws = i === value.length || isAsciiWhitespace(value.charCodeAt(i));
+    if (!ws && start === -1) start = i;
+    else if (ws && start !== -1) {
+      tokens.push(value.slice(start, i));
+      start = -1;
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Namespaces the element's `id` and rewrites every in-fragment id
+ * reference it carries (`href="#x"`, `for`, `aria-controls`, ...) so that
+ * fragment links and label/ARIA relationships keep working after the
+ * prefix. Runs after the attribute allowlist, so only surviving
+ * attributes are touched.
+ */
+function namespaceIds(el: Element): void {
+  const id = el.getAttribute("id");
+  if (id !== null) {
+    if (id === "") el.removeAttribute("id");
+    else el.setAttribute("id", ID_PREFIX + id);
+  }
+  for (const attr of [...el.attributes]) {
+    const name = attr.name.toLowerCase();
+    if (name === "href") {
+      const trimmed = attr.value.trim();
+      if (trimmed.startsWith("#") && trimmed.length > 1) el.setAttribute(attr.name, `#${ID_PREFIX}${trimmed.slice(1)}`);
+    } else if (ID_REF_ATTRS.has(name)) {
+      if (attr.value !== "") el.setAttribute(attr.name, ID_PREFIX + attr.value.trim());
+    } else if (ID_REF_LIST_ATTRS.has(name)) {
+      el.setAttribute(
+        attr.name,
+        splitTokens(attr.value)
+          .map((t) => ID_PREFIX + t)
+          .join(" "),
+      );
+    }
+  }
+}
+
 export interface EnforceResult {
   removedElements: SanitizationNote[];
   removedAttributes: SanitizationNote[];
@@ -118,6 +192,7 @@ export function enforceProfile(
     }
 
     if (tag === "a") hardenAnchorTarget(el);
+    namespaceIds(el);
   }
 
   return { removedElements, removedAttributes, rewrittenUrls };
