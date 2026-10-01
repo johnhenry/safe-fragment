@@ -1,7 +1,7 @@
 // Runnable example: ui-v1 + data-action event delegation + an
 // application-registered custom element.
 //
-// Open examples/ui-protocol-demo/index.html via a static file server after
+// Open examples/02-ui-protocol-demo/index.html via a static file server after
 // `npm run build`. Also exercised directly by
 // test/integration/examples-smoke.test.ts.
 

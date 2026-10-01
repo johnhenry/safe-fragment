@@ -3,7 +3,7 @@
 // real, application-authored code on purpose. See
 // src/sandbox/example-sandbox-element.ts and docs/adr/0001.
 //
-// Open examples/sandbox-playground/index.html via a static file server
+// Open examples/03-sandbox-playground/index.html via a static file server
 // after `npm run build`. Also exercised directly by
 // test/integration/examples-smoke.test.ts.
 

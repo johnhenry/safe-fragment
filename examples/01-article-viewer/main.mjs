@@ -2,7 +2,7 @@
 // includes a deliberately dangerous payload, to show it gets neutralized
 // rather than executed.
 //
-// Open examples/article-viewer/index.html via any static file server after
+// Open examples/01-article-viewer/index.html via any static file server after
 // `npm run build` (it imports the built ../../dist/index.js). Also
 // exercised directly (imported and called) by
 // test/integration/examples-smoke.test.ts in a real browser.

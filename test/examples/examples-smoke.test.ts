@@ -12,9 +12,9 @@ afterEach(() => {
 });
 
 describe("examples (run against the built dist/, via npm run examples)", () => {
-  it("article-viewer: renders the fixture post and neutralizes the embedded payloads", async () => {
+  it("01-article-viewer: renders the fixture post and neutralizes the embedded payloads", async () => {
     // @ts-expect-error -- resolved only after `npm run build` produces dist/; not part of the tsc project graph.
-    const { run } = await import("../../examples/article-viewer/main.mjs");
+    const { run } = await import("../../examples/01-article-viewer/main.mjs");
     const container = makeContainer();
     const { element, report } = await run(container, { tagName: "example-article-viewer" });
 
@@ -25,9 +25,9 @@ describe("examples (run against the built dist/, via npm run examples)", () => {
     expect(html.toLowerCase()).not.toContain("javascript:");
   });
 
-  it("ui-protocol-demo: data-action clicks dispatch safe-fragment:action", async () => {
+  it("02-ui-protocol-demo: data-action clicks dispatch safe-fragment:action", async () => {
     // @ts-expect-error -- see above.
-    const { run } = await import("../../examples/ui-protocol-demo/main.mjs");
+    const { run } = await import("../../examples/02-ui-protocol-demo/main.mjs");
     const container = makeContainer();
     const { element } = await run(container, { tagName: "example-ui-protocol-demo" });
 
@@ -44,9 +44,9 @@ describe("examples (run against the built dist/, via npm run examples)", () => {
     expect(element.querySelector("rating-stars")).toBeTruthy();
   });
 
-  it("sandbox-playground: runs the sample code in isolation and reports back", async () => {
+  it("03-sandbox-playground: runs the sample code in isolation and reports back", async () => {
     // @ts-expect-error -- see above.
-    const { run } = await import("../../examples/sandbox-playground/main.mjs");
+    const { run } = await import("../../examples/03-sandbox-playground/main.mjs");
     const container = makeContainer();
     const { messages, errors } = await run(container, { tagName: "example-sandbox-playground" });
 
@@ -56,9 +56,9 @@ describe("examples (run against the built dist/, via npm run examples)", () => {
     expect(allText).toContain("Confirmed isolated from the host page");
   });
 
-  it("playground: default render neutralizes the fixture, and its own diff/report helpers agree with what actually rendered", async () => {
+  it("04-playground: default render neutralizes the fixture, and its own diff/report helpers agree with what actually rendered", async () => {
     // @ts-expect-error -- see above.
-    const { run, renderProtected, dangerousPatternsIn, DEFAULT_PAYLOAD } = await import("../../examples/playground/main.mjs");
+    const { run, renderProtected, dangerousPatternsIn, DEFAULT_PAYLOAD } = await import("../../examples/04-playground/main.mjs");
     const container = makeContainer();
     const { element, report } = await run(container, { tagName: "example-playground" });
 

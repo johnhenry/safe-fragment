@@ -20,7 +20,8 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -29,8 +30,12 @@
     "CHANGELOG.md"
   ],
   "sideEffects": false,
-  "engines": {
-    "node": ">=26.0.0"
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=26.0.0",
+      "onFail": "warn"
+    }
   },
   "scripts": {
     "build": "tsup",
@@ -69,7 +74,7 @@
     "url": "https://github.com/johnhenry/safe-fragment/issues"
   },
   "dependencies": {
-    "dompurify": "^3.4.16"
+    "dompurify": "3.4.16"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

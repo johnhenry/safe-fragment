@@ -5,7 +5,7 @@
 // of what changed. Also demos the ui-v1 "content requests, host decides"
 // action protocol.
 //
-// Open examples/playground/index.html via a static file server after
+// Open examples/04-playground/index.html via a static file server after
 // `npm run build`. `run()` below only exercises the default render (for
 // the automated smoke test); the interactive UI is wired up by
 // `mountPlayground()`, called directly from index.html's own script.
