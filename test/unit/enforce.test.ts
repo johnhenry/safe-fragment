@@ -231,3 +231,37 @@ describe("enforceProfile", () => {
     expect(Object.keys(PLAIN_TEXT_V1_PROFILE.elements)).toHaveLength(0);
   });
 });
+
+describe("enforceProfile: cross-engine value parity (X6)", () => {
+  it("trims attribute values the way DOMPurify does", () => {
+    const frag = fragmentFromHtml('<p title="  padded  " lang=" en ">x</p><a href=" ">y</a>');
+    enforceProfile(frag, ARTICLE_V1_PROFILE);
+    expect(serialize(frag)).toBe('<p title="padded" lang="en">x</p><a href="">y</a>');
+  });
+
+  for (const href of [
+    "java script:alert(1)",
+    "javascript&#8203;:alert(1)",
+    "java\u00a0script:alert(1)",
+    "\u2003javascript:alert(1)",
+    "jav\u2028ascript:alert(1)",
+  ]) {
+    it(`removes an href that is javascript: once invisible characters are stripped: ${JSON.stringify(href)}`, () => {
+      const a = document.createElement("a");
+      a.setAttribute("href", href.replace("&#8203;", "\u200b"));
+      const frag = document.createDocumentFragment();
+      frag.appendChild(a);
+      enforceProfile(frag, ARTICLE_V1_PROFILE);
+      expect(frag.firstElementChild!.hasAttribute("href")).toBe(false);
+    });
+  }
+
+  it("still keeps ordinary relative URLs that contain spaces", () => {
+    const a = document.createElement("a");
+    a.setAttribute("href", "my file.html");
+    const frag = document.createDocumentFragment();
+    frag.appendChild(a);
+    enforceProfile(frag, ARTICLE_V1_PROFILE);
+    expect(frag.firstElementChild!.getAttribute("href")).toBe("my file.html");
+  });
+});

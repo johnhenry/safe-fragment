@@ -276,6 +276,11 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
     for (const attr of [...el.attributes]) {
       const name = attr.name.toLowerCase();
 
+      // DOMPurify trims every attribute value (except `value`); the native
+      // engine does not. Trim here so both engines emit identical values
+      // (`href=" "` vs `href=""`, `lang=" en "`).
+      if (name !== "value" && attr.value !== attr.value.trim()) el.setAttribute(attr.name, attr.value.trim());
+
       if (isHardDenied(name)) {
         removedAttributes.push({ tag, attribute: name, reason: "forbidden-attribute-class", snippet: snippet(attr.value) });
         el.removeAttribute(attr.name);

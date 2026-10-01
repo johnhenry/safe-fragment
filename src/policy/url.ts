@@ -69,6 +69,36 @@ function usableBase(base: string | URL | undefined): URL | null {
  * 4. Anything that fails to parse is rejected outright.
  */
 export function checkUrl(rawValue: string, allowedSchemes: readonly string[], base?: string | URL): UrlCheckResult {
+  const result = checkUrlOnce(rawValue, allowedSchemes, base);
+  if (!result.allowed) return result;
+  // Defense in depth, and parity with DOMPurify: a value that only becomes a
+  // disallowed scheme once whitespace, control and format characters are
+  // removed (`java script:`, `javascript&#8203;:`) is rejected, even though a
+  // browser's URL parser would treat the original as a harmless relative
+  // reference. The two engines then agree, and a parser that is more lenient
+  // than WHATWG's cannot be exploited through such a value.
+  const squeezed = removeInvisible(rawValue);
+  if (squeezed !== rawValue.trim()) {
+    const stricter = checkUrlOnce(squeezed, allowedSchemes, base);
+    if (!stricter.allowed) return stricter;
+  }
+  return result;
+}
+
+/** Characters DOMPurify strips from a URL attribute before judging its scheme: C0 controls, spaces, and Unicode space/format characters. */
+function isInvisibleUrlChar(code: number): boolean {
+  return code <= 0x20 || code === 0xa0 || code === 0x1680 || code === 0x180e || (code >= 0x2000 && code <= 0x2029) || code === 0x205f || code === 0x3000;
+}
+
+function removeInvisible(value: string): string {
+  let out = "";
+  for (let i = 0; i < value.length; i++) {
+    if (!isInvisibleUrlChar(value.charCodeAt(i))) out += value[i];
+  }
+  return out;
+}
+
+function checkUrlOnce(rawValue: string, allowedSchemes: readonly string[], base?: string | URL): UrlCheckResult {
   const trimmed = rawValue.trim();
   if (trimmed === "") {
     return { allowed: allowedSchemes.includes(RELATIVE), scheme: RELATIVE };

@@ -36,6 +36,7 @@ see [Security model](#security-model) below.
 - [Try it live](#try-it-live)
 - [`<safe-fragment>` API](#safe-fragment-api)
 - [Profiles](#profiles)
+- [Adding a new profile](#adding-a-new-profile)
 - [Sanitizing without the element](#sanitizing-without-the-element)
 - [The `src` remote-fetch capability](#the-src-remote-fetch-capability)
 - [`<example-sandbox>`](#example-sandbox)
@@ -253,6 +254,35 @@ no dangerous elements, `on*`/`style` attributes, dangerous schemes, wildcard
 `unregisterProfile(name)` removes one you added. `PLAIN_TEXT_V1`, `ARTICLE_V1`,
 `UI_V1` and `EMAIL_V1` are exported **name strings** (use `getProfile(ARTICLE_V1)` for
 the definition).
+
+## Adding a new profile
+
+**In your application** (no fork needed): derive from a built-in, give it a
+new name that ends in `-v<N>` with a matching `version`, and register it
+before the first render. A profile can only narrow or extend within the
+validated envelope (no dangerous elements, `on*`/`style`, or dangerous
+schemes).
+
+```ts
+registerProfile(deriveProfile("article-v1", { name: "comments-v1", version: 1, urlSchemes: ["relative", "https:"] }));
+```
+
+**In this repository** (a new built-in `foo-v1`):
+
+1. Add `src/profiles/foo-v1.ts` exporting a deeply frozen `FOO_V1_PROFILE`
+   (the shape is `ProfileDefinition` in `src/policy/profile.ts`; copy the
+   closest existing profile).
+2. Add it to the seed list in `src/policy/registry.ts` and export its
+   name-string constant (`FOO_V1`) from `src/index.ts`.
+3. Add it to the invariants in `test/unit/profiles.test.ts` (no dangerous
+   scheme/element, no `style`, no `on*`).
+4. Add fixtures to `test/fixtures/xss-corpus.ts` **and**
+   `test/fixtures/benign-corpus.ts`; the equivalence suite runs both through
+   both engines, and the benign corpus is what catches a sanitizer that
+   deletes everything.
+5. Document it in `docs/profiles.md` and the table above, and add a
+   `CHANGELOG.md` entry. A change to a shipped profile's output is a new
+   version (`foo-v2`), never an edit to `foo-v1`.
 
 ## Sanitizing without the element
 

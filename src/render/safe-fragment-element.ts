@@ -117,6 +117,13 @@ export function createSafeFragmentElementClass(
         return;
       }
 
+      // A change to what is rendered (profile, source, scope) invalidates a
+      // render that is already in flight, in EVERY render mode: a manual-mode
+      // render() that was mid-fetch must not land content produced under a
+      // profile/source/scope the element no longer claims (e.g. a looser
+      // profile it was just tightened away from).
+      if (name === "profile" || name === "src" || name === "content" || name === "scope") this.#invalidateInFlight();
+
       if (name === "scope") {
         // The stale wrapper (light child or shadow wrapper) must not linger
         // under the old scope.
@@ -147,6 +154,7 @@ export function createSafeFragmentElementClass(
     /** `undefined` behaves like `null` (no html source). A non-string value is stored and rejected with `INVALID_SOURCE` at render time. */
     set html(value: string | null | undefined) {
       this.#htmlProperty = value === undefined ? null : value;
+      this.#invalidateInFlight();
       this.#scheduleRender();
     }
 
@@ -405,6 +413,12 @@ export function createSafeFragmentElementClass(
       this.dispatchEvent(new CustomEvent("safe-fragment:disabled", { bubbles: true }));
     }
 
+    /** Makes any render currently awaiting a fetch/sanitize stale: it resolves `superseded` and never lands. */
+    #invalidateInFlight(): void {
+      this.#renderToken++;
+      this.#abortController?.abort(ABORT_SUPERSEDED);
+    }
+
     #supersededResult(error?: SafeFragmentError): RenderResult {
       return error ? { status: "superseded", error } : { status: "superseded" };
     }
@@ -458,6 +472,7 @@ export function createSafeFragmentElementClass(
           );
           if (!touchesTemplate) return;
           this.#syncTemplateObserver(MO);
+          this.#invalidateInFlight();
           this.#scheduleRender();
         });
         this.#hostObserver.observe(this, { childList: true });
@@ -471,7 +486,10 @@ export function createSafeFragmentElementClass(
       this.#templateObserver?.disconnect();
       this.#observedTemplate = tpl;
       if (!tpl) return;
-      this.#templateObserver ??= new MO(() => this.#scheduleRender());
+      this.#templateObserver ??= new MO(() => {
+        this.#invalidateInFlight();
+        this.#scheduleRender();
+      });
       this.#templateObserver.observe(tpl.content, { childList: true, subtree: true, characterData: true, attributes: true });
     }
 
