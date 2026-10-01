@@ -548,7 +548,9 @@ any sibling; the relationships are mechanisms, named below.
 - **[`@johnhenry/mport`](https://github.com/johnhenry/mport)** -- the CDN router
   that compiles to an import map. safe-fragment's DOMPurify fallback needs a
   `dompurify` import-map entry on pages with no bundler; on raw-file CDNs list
-  it explicitly: `mport build @johnhenry/safe-fragment@0 dompurify@3.4.16`
+  it explicitly (`mport build @johnhenry/safe-fragment@0 dompurify@3.4.16`) or
+  let mport add it from this package's `dependencies` with `--dependencies`
+  (`build(specs, { dependencies: true })`)
   (see [No bundler / import map](#no-bundler--import-map)). Not a dependency.
 - [`@johnhenry/domable`](https://github.com/johnhenry/domable) -- HTML
   text/DOM/React-shape conversions and a hyperscript builder. **Not a
