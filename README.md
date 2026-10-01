@@ -531,16 +531,16 @@ somewhere less trusted than your own source. It has no runtime dependency on
 any sibling; the relationships are mechanisms, named below.
 
 - **[`@johnhenry/html-modules`](https://github.com/johnhenry/html-modules)** --
-  html-modules stamps component templates into the page as real DOM and tracks
-  an opt-in template sanitizer for less-trusted modules
-  ([html-modules#3](https://github.com/johnhenry/html-modules/issues/3)).
-  `sanitizeToFragment(html, { profile })` (or `sanitizeToFragmentSync` after
-  `preloadSanitizer()`) is the hook that fits: it returns a detached,
-  profile-conformant `DocumentFragment` plus a report of everything stripped,
-  with a custom profile such as `ui--*` custom-element prefix patterns for a
-  module's own components. A `<safe-fragment>` inside a component template
-  does the same job declaratively for untrusted slots. Not a dependency in
-  either direction yet; the issue tracks the wiring.
+  html-modules stamps component templates into the page as real DOM, and its
+  opt-in `sanitize` hook runs each template of a less-trusted module through a
+  sanitizer before anything registers. Its `@johnhenry/html-modules/safe-fragment`
+  adapter (`safeFragmentSanitizer()`) calls `sanitizeToFragment(html, { profile })`
+  with a profile derived from `component-template-v1` (plus the module's own
+  `ns--*` custom elements) and `idPolicy: "keep-in-shadow"`, since html-modules
+  always stamps into a shadow root; the report becomes an html-modules event. A
+  `<safe-fragment>` inside a component template does the same job declaratively
+  for untrusted slots. safe-fragment is an optional peer of html-modules, never a
+  runtime dependency, and safe-fragment depends on nothing in html-modules.
 - **[`@johnhenry/window-algebra`](https://github.com/johnhenry/window-algebra)** --
   window-algebra's `htmlSurface(element)` hosts any element, so
   `htmlSurface(safeFragmentEl)` puts sanitized content in a window; it only
