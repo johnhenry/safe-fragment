@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { sanitize } from "../../src/sanitize/index.js";
-import { getProfile, getCustomElementAllowlist } from "../../src/policy/registry.js";
+import { getProfile } from "../../src/policy/registry.js";
 import { hasNativeSanitizer } from "../../src/sanitize/capabilities.js";
 
 const engines: Array<"native" | "dompurify"> = ["dompurify"];
 if (hasNativeSanitizer(document)) engines.push("native");
 
 async function run(html: string, engine: "native" | "dompurify"): Promise<HTMLElement> {
-  const { fragment } = await sanitize(document, html, getProfile("ui-v1")!, getCustomElementAllowlist("ui-v1"), { forceEngine: engine });
+  const { fragment } = await sanitize(document, html, getProfile("ui-v1")!, { forceEngine: engine });
   const host = document.createElement("div");
   host.appendChild(fragment);
   return host;

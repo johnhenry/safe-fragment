@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { registerSafeFragment } from "../../src/render/register.js";
-import { defineProfile } from "../../src/policy/registry.js";
 
 type SafeFragmentEl = HTMLElement & {
   html: string | null;
@@ -205,7 +204,6 @@ describe("<safe-fragment> scope", () => {
 
 describe("<safe-fragment> ui-v1 action/link delegation", () => {
   it("dispatches safe-fragment:action for data-action elements", async () => {
-    defineProfile("ui-v1", { customElements: [] });
     const el = create();
     el.profile = "ui-v1";
     el.html = '<button type="button" data-action="do-thing">Go</button>';

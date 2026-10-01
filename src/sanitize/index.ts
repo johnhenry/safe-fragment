@@ -1,4 +1,4 @@
-import type { ProfileDefinition, CustomElementAllowlistEntry } from "../policy/profile.js";
+import type { ProfileDefinition } from "../policy/profile.js";
 import type { SanitizationReport, SanitizationNote } from "../types.js";
 import { SafeFragmentError } from "../errors.js";
 import { hasNativeSanitizer } from "./capabilities.js";
@@ -35,6 +35,8 @@ export interface SanitizeOptions {
   forceEngine?: "native" | "dompurify";
   /** True if the input was truncated upstream (e.g. by the `src` fetch size cap) before reaching the sanitizer. */
   truncated?: boolean;
+  /** Base URL protocol-relative URLs inherit their scheme from; defaults to `doc.baseURI`. */
+  baseUrl?: string;
   /** Per-call DOMPurify loader; defaults to the one set via `registerSafeFragment`/`preloadSanitizer`, then to `import("dompurify")`. */
   loadDOMPurify?: DOMPurifyLoader;
 }
@@ -59,22 +61,17 @@ export interface SanitizeResult {
  * if sanitization cannot be completed safely -- callers must treat a throw
  * here as "do not render", not as "render whatever we got back".
  */
-export async function sanitize(
-  doc: Document,
-  html: string,
-  profile: ProfileDefinition,
-  customElements: ReadonlyMap<string, CustomElementAllowlistEntry>,
-  options: SanitizeOptions = {},
-): Promise<SanitizeResult> {
+export async function sanitize(doc: Document, html: string, profile: ProfileDefinition, options: SanitizeOptions = {}): Promise<SanitizeResult> {
   const start = nowMs();
   assertInputWithinLimit(html, options);
   if (profile.mode === "text") return textResult(doc, html, profile, options, start);
 
-  const baseline = buildBaselineConfig(profile, customElements);
+  const baseline = buildBaselineConfig(profile);
   const useNative = options.forceEngine === "native" || (options.forceEngine === undefined && hasNativeSanitizer(doc));
 
   if (useNative) {
-    return finish(doc, sanitizeWithNative(doc, html, baseline), "native", [], [], html, profile, customElements, options, start);
+    const out = sanitizeWithNative(doc, html, baseline);
+    return finish(doc, out.fragment, "native", out.removedElements, out.removedAttributes, html, profile, options, start);
   }
 
   const win = doc.defaultView;
@@ -83,7 +80,7 @@ export async function sanitize(
   }
   const purify = await getDOMPurify(win, options.loadDOMPurify);
   const out = sanitizeWithDOMPurify(purify, html, baseline);
-  return finish(doc, out.fragment, "dompurify", out.removedElements, out.removedAttributes, html, profile, customElements, options, start);
+  return finish(doc, out.fragment, "dompurify", out.removedElements, out.removedAttributes, html, profile, options, start);
 }
 
 /**
@@ -93,21 +90,16 @@ export async function sanitize(
  * render). Otherwise it throws `SANITIZER_NOT_READY` -- it never falls back
  * to anything less safe.
  */
-export function sanitizeSync(
-  doc: Document,
-  html: string,
-  profile: ProfileDefinition,
-  customElements: ReadonlyMap<string, CustomElementAllowlistEntry>,
-  options: SanitizeOptions = {},
-): SanitizeResult {
+export function sanitizeSync(doc: Document, html: string, profile: ProfileDefinition, options: SanitizeOptions = {}): SanitizeResult {
   const start = nowMs();
   assertInputWithinLimit(html, options);
   if (profile.mode === "text") return textResult(doc, html, profile, options, start);
 
-  const baseline = buildBaselineConfig(profile, customElements);
+  const baseline = buildBaselineConfig(profile);
   const useNative = options.forceEngine === "native" || (options.forceEngine === undefined && hasNativeSanitizer(doc));
   if (useNative) {
-    return finish(doc, sanitizeWithNative(doc, html, baseline), "native", [], [], html, profile, customElements, options, start);
+    const out = sanitizeWithNative(doc, html, baseline);
+    return finish(doc, out.fragment, "native", out.removedElements, out.removedAttributes, html, profile, options, start);
   }
   const purify = peekDOMPurify(doc.defaultView);
   if (!purify) {
@@ -118,7 +110,7 @@ export function sanitizeSync(
     );
   }
   const out = sanitizeWithDOMPurify(purify, html, baseline);
-  return finish(doc, out.fragment, "dompurify", out.removedElements, out.removedAttributes, html, profile, customElements, options, start);
+  return finish(doc, out.fragment, "dompurify", out.removedElements, out.removedAttributes, html, profile, options, start);
 }
 
 function textResult(doc: Document, html: string, profile: ProfileDefinition, options: SanitizeOptions, start: number): SanitizeResult {
@@ -148,11 +140,10 @@ function finish(
   engineRemovedAttributes: SanitizationNote[],
   html: string,
   profile: ProfileDefinition,
-  customElements: ReadonlyMap<string, CustomElementAllowlistEntry>,
   options: SanitizeOptions,
   start: number,
 ): SanitizeResult {
-  const enforced = enforceProfile(engineFragment, profile, customElements, { baseUrl: doc.baseURI });
+  const enforced = enforceProfile(engineFragment, profile, { baseUrl: options.baseUrl ?? doc.baseURI });
   const fragment = rebuildFragment(engineFragment);
   return {
     fragment,

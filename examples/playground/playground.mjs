@@ -1,11 +1,4 @@
-import {
-  DEFAULT_PAYLOAD,
-  ATTACK_PRESETS,
-  dangerousPatternsIn,
-  simulateHostAction,
-  renderProtected,
-  renderRawUnprotected,
-} from "./main.mjs";
+import { DEFAULT_PAYLOAD, ATTACK_PRESETS, dangerousPatternsIn, simulateHostAction, renderProtected, renderRawUnprotected, AGENT_PROFILE } from "./main.mjs";
 
 const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -143,12 +136,12 @@ function logLine(text) {
 
 async function renderAgent(html) {
   agentLog.replaceChildren();
-  const result = await renderProtected(agentContainer, html, "ui-v1");
+  const result = await renderProtected(agentContainer, html, AGENT_PROFILE);
   if (result.rejected) {
     logLine(`render rejected: ${result.rejected.code}`);
     return;
   }
-  logLine(`rendered under ui-v1 (${result.report.durationMs.toFixed(2)}ms)`);
+  logLine(`rendered under the derived ui-v1 profile (${result.report.durationMs.toFixed(2)}ms)`);
   result.element.addEventListener("safe-fragment:action", (event) => {
     const { action, value } = event.detail;
     logLine(`received action="${action}"${value ? ` value="${value}"` : ""} -> ${simulateHostAction(action, value)}`);

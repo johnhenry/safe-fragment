@@ -1,4 +1,5 @@
 import type { BaselineConfig } from "./config.js";
+import type { SanitizationNote } from "../types.js";
 import { SafeFragmentError } from "../errors.js";
 
 /**
@@ -41,7 +42,78 @@ interface SetHTMLCapableElement extends Element {
  * engine-internal error), never silently falls through to an unsanitized
  * parse.
  */
-export function sanitizeWithNative(doc: Document, html: string, baseline: BaselineConfig): DocumentFragment {
+export interface NativeOutput {
+  fragment: DocumentFragment;
+  /** Elements/attributes present in the input but gone before `enforceProfile` ran (the native engine's own removals). */
+  removedElements: SanitizationNote[];
+  removedAttributes: SanitizationNote[];
+}
+
+const MAX_ENGINE_NOTES = 1000;
+
+interface Inventory {
+  elements: Map<string, number>;
+  attributes: Map<string, number>;
+}
+
+function inventoryOf(root: ParentNode): Inventory {
+  const elements = new Map<string, number>();
+  const attributes = new Map<string, number>();
+  for (const el of root.querySelectorAll("*")) {
+    const tag = el.localName;
+    if (tag === "html" || tag === "head" || tag === "body") continue; // DOMParser's implied wrappers
+    elements.set(tag, (elements.get(tag) ?? 0) + 1);
+    for (const attr of el.attributes) {
+      const key = `${tag}\u0000${attr.name.toLowerCase()}`;
+      attributes.set(key, (attributes.get(key) ?? 0) + 1);
+    }
+  }
+  return { elements, attributes };
+}
+
+/**
+ * The native engine reports nothing about what it removed. To keep the
+ * `SanitizationReport` honest, parse the same input a second time into an
+ * INERT document (no browsing context: nothing loads or runs) and diff the
+ * element/attribute inventories against the engine's output. If a
+ * `DOMParser` is not usable (e.g. Trusted Types enforced, which gates
+ * `parseFromString`), fall back to a second `setHTML` with a permissive
+ * blocklist-only config, which still reveals everything OUR config removed
+ * (only the engine's unconditional script/handler baseline goes uncounted).
+ */
+function parseInputInventory(doc: Document, html: string, inert: Document): Inventory | undefined {
+  try {
+    const win = doc.defaultView as (Window & { DOMParser?: typeof DOMParser }) | null;
+    if (win?.DOMParser) return inventoryOf(new win.DOMParser().parseFromString(html, "text/html"));
+  } catch {
+    // fall through to the setHTML-based inventory
+  }
+  try {
+    const probe = inert.createElement("div") as unknown as SetHTMLCapableElement;
+    probe.setHTML(html, { sanitizer: { removeElements: [] } as NativeSanitizerConfig });
+    return inventoryOf(probe);
+  } catch {
+    return undefined;
+  }
+}
+
+function diffInventories(input: Inventory | undefined, output: Inventory): { elements: SanitizationNote[]; attributes: SanitizationNote[] } {
+  const elements: SanitizationNote[] = [];
+  const attributes: SanitizationNote[] = [];
+  if (!input) return { elements, attributes };
+  for (const [tag, n] of input.elements) {
+    const missing = n - (output.elements.get(tag) ?? 0);
+    for (let i = 0; i < missing && elements.length < MAX_ENGINE_NOTES; i++) elements.push({ tag, reason: "removed-by-engine:native" });
+  }
+  for (const [key, n] of input.attributes) {
+    const missing = n - (output.attributes.get(key) ?? 0);
+    const [tag, attribute] = key.split("\u0000") as [string, string];
+    for (let i = 0; i < missing && attributes.length < MAX_ENGINE_NOTES; i++) attributes.push({ tag, attribute, reason: "removed-by-engine:native" });
+  }
+  return { elements, attributes };
+}
+
+export function sanitizeWithNative(doc: Document, html: string, baseline: BaselineConfig): NativeOutput {
   const inert = doc.implementation.createHTMLDocument("");
   const container = inert.createElement("div") as unknown as SetHTMLCapableElement;
   const config: NativeSanitizerConfig = {
@@ -61,5 +133,7 @@ export function sanitizeWithNative(doc: Document, html: string, baseline: Baseli
 
   const frag = inert.createDocumentFragment();
   while (container.firstChild) frag.appendChild(container.firstChild);
-  return frag;
+
+  const removed = diffInventories(parseInputInventory(doc, html, inert), inventoryOf(frag));
+  return { fragment: frag, removedElements: removed.elements, removedAttributes: removed.attributes };
 }

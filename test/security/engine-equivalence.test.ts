@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { sanitize } from "../../src/sanitize/index.js";
-import { getProfile, getCustomElementAllowlist } from "../../src/policy/registry.js";
+import { getProfile } from "../../src/policy/registry.js";
 import { hasNativeSanitizer } from "../../src/sanitize/capabilities.js";
 import { XSS_CORPUS } from "../fixtures/xss-corpus.js";
 import { BENIGN_CORPUS } from "../fixtures/benign-corpus.js";
@@ -25,9 +25,8 @@ suite(title, () => {
   for (const c of cases) {
     it(`[${c.source}] ${c.name}`, async () => {
       const profile = getProfile(c.profile)!;
-      const customElements = getCustomElementAllowlist(c.profile);
-      const a = await sanitize(document, c.input, profile, customElements, { forceEngine: "native" });
-      const b = await sanitize(document, c.input, profile, customElements, { forceEngine: "dompurify" });
+      const a = await sanitize(document, c.input, profile, { forceEngine: "native" });
+      const b = await sanitize(document, c.input, profile, { forceEngine: "dompurify" });
       expect(normalize(a.fragment)).toBe(normalize(b.fragment));
     });
   }

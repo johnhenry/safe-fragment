@@ -63,3 +63,28 @@ export function registerSafeFragment(options: RegisterSafeFragmentOptions = {}):
   const ElementClass = createSafeFragmentElementClass(HTMLElementBase, { fetchCapability, maxInputLength: options.maxInputLength });
   registry.define(tagName, ElementClass);
 }
+
+const classCache = new WeakMap<object, ReturnType<typeof createSafeFragmentElementClass>>();
+
+/**
+ * The `<safe-fragment>` element class for the ambient (or given) realm,
+ * built with default options and cached per `HTMLElement` base. Use it to
+ * subclass or `customElements.define` the element yourself, or to
+ * `instanceof`-check one. `registerSafeFragment()` builds its own class
+ * (with your `fetch`/`maxInputLength` options) and is the usual route.
+ */
+export function getSafeFragmentElementClass(htmlElementBase?: typeof HTMLElement): ReturnType<typeof createSafeFragmentElementClass> {
+  const base = htmlElementBase ?? getHTMLElementBase();
+  if (!base) {
+    throw new SafeFragmentError(
+      "UNSUPPORTED_ENVIRONMENT",
+      "getSafeFragmentElementClass() requires a DOM environment (HTMLElement). Pass htmlElementBase or call it from browser code.",
+    );
+  }
+  let cls = classCache.get(base);
+  if (!cls) {
+    cls = createSafeFragmentElementClass(base, { fetchCapability: DEFAULT_FETCH_CAPABILITY });
+    classCache.set(base, cls);
+  }
+  return cls;
+}

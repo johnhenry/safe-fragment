@@ -23,7 +23,7 @@
         margin-top: 1rem;
       }
     </style>
-      <!-- dompurify import map: Safari (and any browser without Element.setHTML) takes the DOMPurify
+    <!-- dompurify import map: Safari (and any browser without Element.setHTML) takes the DOMPurify
          path, which resolves the bare specifier "dompurify" at render time. Served from the repo root. -->
     <script type="importmap">
       { "imports": { "dompurify": "../../node_modules/dompurify/dist/purify.es.mjs" } }
@@ -32,8 +32,9 @@
   <body>
     <h1>safe-fragment: ui-v1 + data-action example</h1>
     <p>
-      Run <code>npm run build</code> first, then serve this directory and open this file. "rating-stars" is an application-registered custom element (via
-      <code>defineProfile</code>); clicking Save/Delete dispatches <code>safe-fragment:action</code>, never inline code.
+      Run <code>npm run build</code> first, then serve this directory and open this file. "rating-stars" is an allowlisted custom element (a profile derived
+      from ui-v1 with <code>deriveProfile</code> + <code>registerProfile</code>); clicking Save/Delete dispatches <code>safe-fragment:action</code>, never
+      inline code.
     </p>
     <div id="app"></div>
     <pre id="log"></pre>

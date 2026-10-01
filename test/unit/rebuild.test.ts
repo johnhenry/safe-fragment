@@ -46,7 +46,7 @@ describe("rebuildFragment", () => {
 describe("sanitize() output never carries an is-value (both engines)", () => {
   for (const engine of ["dompurify", "native"] as const) {
     it.skipIf(engine === "native" && !hasNativeSanitizer(document))(`engine: ${engine}`, async () => {
-      const { fragment } = await sanitize(document, '<span is="host-defined-ext" id="a">x</span>', getProfile("article-v1")!, new Map(), {
+      const { fragment } = await sanitize(document, '<span is="host-defined-ext" id="a">x</span>', getProfile("article-v1")!, {
         forceEngine: engine,
       });
       expect(serialize(fragment)).toBe('<span id="user-content-a">x</span>');

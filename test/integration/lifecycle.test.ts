@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { registerSafeFragment } from "../../src/render/register.js";
-import { defineProfile } from "../../src/policy/registry.js";
 import type { SafeFragmentElement } from "../../src/render/element-types.js";
 
 const TAG = "sf-lifecycle";
@@ -8,7 +7,6 @@ const originalFetch = globalThis.fetch;
 
 beforeAll(() => {
   registerSafeFragment({ tagName: TAG, fetch: { enabled: true, allowedOrigins: [] } });
-  defineProfile("ui-v1", { customElements: [] });
 });
 
 const live: HTMLElement[] = [];

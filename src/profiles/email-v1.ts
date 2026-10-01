@@ -21,8 +21,9 @@ const GLOBAL_ATTRS = Object.freeze(["id", "lang", "dir", "title"]);
  * test/security only runs the shared cross-profile cases against it, not
  * an email-specific fixture set. See README "Known limitations".
  */
-export const EMAIL_V1: ProfileDefinition = Object.freeze({
+export const EMAIL_V1_PROFILE: ProfileDefinition = Object.freeze({
   name: "email-v1",
+  version: 1,
   mode: "html",
   elements: Object.freeze({
     p: GLOBAL_ATTRS,
@@ -55,5 +56,6 @@ export const EMAIL_V1: ProfileDefinition = Object.freeze({
   urlSchemes: SAFE_DEFAULT_URL_SCHEMES,
   allowedDataAttributes: Object.freeze([]),
   allowStyleAttribute: false,
-  allowCustomElements: false,
+  customElements: Object.freeze([]),
+  blockRelativeAutoLoadUrls: true,
 });

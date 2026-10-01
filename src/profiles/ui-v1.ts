@@ -9,7 +9,6 @@ const GLOBAL_ATTRS = Object.freeze(["id", "lang", "dir", "title", "class"]);
 // attributes such as `data-hx-on:click` are code by another name.
 const INTERACTIVE_ATTRS = Object.freeze([
   ...GLOBAL_ATTRS,
-  "data-action",
   "role",
   "tabindex",
   "aria-label",
@@ -23,8 +22,10 @@ const INTERACTIVE_ATTRS = Object.freeze([
 
 /**
  * `ui-v1` -- structural/interactive application UI: layout containers,
- * buttons, labels, plus custom elements an application explicitly
- * registers via `defineProfile("ui-v1", { customElements: [...] })`.
+ * buttons, labels. Custom elements are not allowed as shipped (this
+ * profile is immutable); an application that wants some derives its own
+ * profile: `registerProfile(deriveProfile("ui-v1", { name: "my-ui-v1",
+ * customElements: [{ tag: "ui--*", attributes: ["role"] }] }))`.
  *
  * Deliberately excludes forms (`<form>`, `<input>`, `<select>`,
  * `<textarea>`, `<button type="submit">`) and SVG/MathML entirely for v1 --
@@ -39,8 +40,9 @@ const INTERACTIVE_ATTRS = Object.freeze([
  * can request behavior, but never supplies code; the application decides
  * what each action string does.
  */
-export const UI_V1: ProfileDefinition = Object.freeze({
+export const UI_V1_PROFILE: ProfileDefinition = Object.freeze({
   name: "ui-v1",
+  version: 1,
   mode: "html",
   elements: Object.freeze({
     div: INTERACTIVE_ATTRS,
@@ -80,5 +82,6 @@ export const UI_V1: ProfileDefinition = Object.freeze({
   urlSchemes: SAFE_DEFAULT_URL_SCHEMES,
   allowedDataAttributes: Object.freeze(["data-action"]),
   allowStyleAttribute: false,
-  allowCustomElements: true,
+  customElements: Object.freeze([]),
+  blockRelativeAutoLoadUrls: false,
 });

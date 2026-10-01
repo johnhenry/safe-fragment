@@ -1,87 +1,238 @@
 import type { ProfileDefinition, CustomElementAllowlistEntry } from "./profile.js";
-import { PLAIN_TEXT_V1 } from "../profiles/plain-text-v1.js";
-import { ARTICLE_V1 } from "../profiles/article-v1.js";
-import { UI_V1 } from "../profiles/ui-v1.js";
-import { EMAIL_V1 } from "../profiles/email-v1.js";
+import { isValidCustomElementName, isValidCustomElementPattern, RESERVED_CUSTOM_ELEMENT_NAMES } from "./profile.js";
+import { PLAIN_TEXT_V1_PROFILE } from "../profiles/plain-text-v1.js";
+import { ARTICLE_V1_PROFILE } from "../profiles/article-v1.js";
+import { UI_V1_PROFILE } from "../profiles/ui-v1.js";
+import { EMAIL_V1_PROFILE } from "../profiles/email-v1.js";
+import { DROP_SUBTREE_ELEMENTS } from "../sanitize/dangerous.js";
+import { SafeFragmentError } from "../errors.js";
+import { getSharedState } from "../shared-state.js";
 
-interface RegisteredProfile {
-  definition: ProfileDefinition;
-  /** Application-registered custom-element allowlist, keyed by tag name. Only meaningful when `definition.allowCustomElements` is true. */
-  customElements: Map<string, CustomElementAllowlistEntry>;
+const BUILTINS: readonly ProfileDefinition[] = [PLAIN_TEXT_V1_PROFILE, ARTICLE_V1_PROFILE, UI_V1_PROFILE, EMAIL_V1_PROFILE];
+
+/** Process-wide registry, held in the shared (globalThis-keyed) state so the ESM and CJS builds see the same profiles. Created lazily; never touches a DOM global. */
+function registry(): Map<string, ProfileDefinition> {
+  const shared = getSharedState();
+  if (!shared.profiles) {
+    shared.profiles = new Map(BUILTINS.map((p) => [p.name, p]));
+    shared.builtinNames = new Set(BUILTINS.map((p) => p.name));
+  }
+  return shared.profiles;
 }
 
-/**
- * Process-wide profile registry. Module-level state is fine here (unlike
- * DOM globals) -- registering profiles has no dependency on `window` or
- * `document` and needs to work identically in Node/SSR so app code can
- * call `defineProfile` during module init without touching the DOM.
- */
-const registry = new Map<string, RegisteredProfile>();
+function isBuiltin(name: string): boolean {
+  registry();
+  return getSharedState().builtinNames!.has(name);
+}
 
-function seedBuiltins(): void {
-  for (const def of [PLAIN_TEXT_V1, ARTICLE_V1, UI_V1, EMAIL_V1]) {
-    if (!registry.has(def.name)) {
-      registry.set(def.name, { definition: def, customElements: new Map() });
+const FORBIDDEN_ELEMENTS: ReadonlySet<string> = new Set([...DROP_SUBTREE_ELEMENTS, "base", "meta", "link"]);
+const DANGEROUS_URL_SCHEMES = ["javascript:", "data:", "vbscript:", "file:", "blob:"];
+const DENIED_ATTRS = new Set(["formaction", "srcdoc", "action", "xlink:href", "style"]);
+const PROFILE_NAME_CHARS_OK = (name: string): boolean => {
+  if (name.length === 0 || name.length > 64) return false;
+  for (let i = 0; i < name.length; i++) {
+    const c = name.charCodeAt(i);
+    const ok = (c >= 0x61 && c <= 0x7a) || (c >= 0x30 && c <= 0x39) || c === 0x2d || c === 0x5f || c === 0x2e;
+    if (!ok) return false;
+  }
+  return name.charCodeAt(0) >= 0x61 && name.charCodeAt(0) <= 0x7a;
+};
+
+function invalid(message: string, details?: Record<string, unknown>): SafeFragmentError {
+  return new SafeFragmentError("INVALID_PROFILE", `safe-fragment: ${message}`, { details });
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === "string");
+}
+
+function checkAttributeNames(where: string, attrs: readonly string[]): void {
+  for (const raw of attrs) {
+    const attr = raw.toLowerCase();
+    if (attr !== raw) throw invalid(`${where}: attribute "${raw}" must be lowercase.`);
+    if (attr.startsWith("on") || DENIED_ATTRS.has(attr)) {
+      throw invalid(`${where}: attribute "${raw}" is never allowed in any profile (event handlers, formaction, srcdoc, action, xlink:href, style).`);
     }
   }
 }
-seedBuiltins();
 
-export interface DefineProfileOptions {
-  /**
-   * Application-registered custom element allowlist for this profile.
-   * Only usable on a profile whose `allowCustomElements` is `true` (only
-   * `ui-v1` ships that way). Registering against a profile that doesn't
-   * allow custom elements throws.
-   */
+/**
+ * Validates `definition` and returns a deeply frozen copy. Throws a typed
+ * `SafeFragmentError` (`INVALID_PROFILE`, or `PROFILE_MISMATCH` when the name
+ * and `version` disagree) for anything malformed -- never a raw `TypeError`,
+ * and never a silent no-op. The checks are the ones a custom profile could
+ * use to smuggle a bypass in: dangerous elements, event-handler and
+ * `style` attributes, dangerous URL schemes.
+ */
+function validateAndFreeze(definition: ProfileDefinition): ProfileDefinition {
+  const def = definition as unknown as Record<string, unknown> | null | undefined;
+  if (typeof def !== "object" || def === null) throw invalid("a profile definition object is required.");
+  const name = def.name;
+  if (typeof name !== "string" || !PROFILE_NAME_CHARS_OK(name)) {
+    throw invalid(`profile "name" must be a non-empty lowercase string of letters, digits, "-", "_" or "." (starting with a letter), up to 64 characters.`, {
+      name,
+    });
+  }
+  const version = def.version;
+  if (typeof version !== "number" || !Number.isInteger(version) || version < 1) throw invalid(`profile "${name}": "version" must be an integer >= 1.`);
+  const suffix = name.lastIndexOf("-v");
+  if (suffix !== -1) {
+    const tail = name.slice(suffix + 2);
+    if (tail.length > 0 && [...tail].every((ch) => ch >= "0" && ch <= "9") && Number(tail) !== version) {
+      throw new SafeFragmentError("PROFILE_MISMATCH", `safe-fragment: profile "${name}" declares version ${version}, but its name says v${tail}.`, {
+        details: { name, version },
+      });
+    }
+  }
+  if (def.mode !== "html" && def.mode !== "text") throw invalid(`profile "${name}": "mode" must be "html" or "text".`);
+  if (typeof def.elements !== "object" || def.elements === null || Array.isArray(def.elements))
+    throw invalid(`profile "${name}": "elements" must be an object mapping tag -> attribute list.`);
+  if (!isStringArray(def.urlAttributes)) throw invalid(`profile "${name}": "urlAttributes" must be an array of strings.`);
+  if (!isStringArray(def.urlSchemes)) throw invalid(`profile "${name}": "urlSchemes" must be an array of strings.`);
+  if (!isStringArray(def.allowedDataAttributes)) throw invalid(`profile "${name}": "allowedDataAttributes" must be an array of strings.`);
+  if (typeof def.allowStyleAttribute !== "boolean" || typeof def.blockRelativeAutoLoadUrls !== "boolean") {
+    throw invalid(`profile "${name}": "allowStyleAttribute" and "blockRelativeAutoLoadUrls" must be booleans.`);
+  }
+  if (def.allowStyleAttribute) throw invalid(`profile "${name}": the style attribute can never be allowed (no profile may set allowStyleAttribute: true).`);
+  if (!Array.isArray(def.customElements)) throw invalid(`profile "${name}": "customElements" must be an array.`);
+
+  for (const scheme of def.urlSchemes) {
+    if (DANGEROUS_URL_SCHEMES.includes(scheme.toLowerCase())) throw invalid(`profile "${name}": URL scheme "${scheme}" can never be allowed.`);
+  }
+  for (const attr of def.allowedDataAttributes) {
+    if (!attr.startsWith("data-") || attr.length <= 5 || attr.includes("*") || attr !== attr.toLowerCase()) {
+      throw invalid(`profile "${name}": allowedDataAttributes entry "${attr}" must be a full lowercase "data-..." name (no wildcards).`);
+    }
+  }
+
+  const elements: Record<string, readonly string[]> = {};
+  for (const [tag, attrs] of Object.entries(def.elements as Record<string, unknown>)) {
+    if (tag !== tag.toLowerCase()) throw invalid(`profile "${name}": element "${tag}" must be lowercase.`);
+    if (FORBIDDEN_ELEMENTS.has(tag)) throw invalid(`profile "${name}": element <${tag}> can never be allowed (raw-text/embedding/foreign container).`);
+    if (!isStringArray(attrs)) throw invalid(`profile "${name}": element <${tag}> needs an array of attribute names.`);
+    checkAttributeNames(`profile "${name}" element <${tag}>`, attrs);
+    elements[tag] = Object.freeze([...attrs]);
+  }
+
+  const customElements: CustomElementAllowlistEntry[] = [];
+  const seen = new Set<string>();
+  for (const entry of def.customElements as unknown[]) {
+    const e = entry as Partial<CustomElementAllowlistEntry> | null;
+    if (typeof e !== "object" || e === null || typeof e.tag !== "string" || !isStringArray(e.attributes)) {
+      throw invalid(`profile "${name}": each customElements entry needs a string "tag" and an "attributes" array.`);
+    }
+    const tag = e.tag.toLowerCase();
+    if (tag.endsWith("*")) {
+      if (!isValidCustomElementPattern(tag))
+        throw invalid(`profile "${name}": custom element pattern "${e.tag}" must be a hyphenated lowercase prefix followed by a single "*" (e.g. "ui--*").`);
+    } else if (!tag.includes("-")) {
+      throw invalid(`profile "${name}": custom element tag "${e.tag}" must contain a hyphen, per the Custom Elements spec.`);
+    } else if (RESERVED_CUSTOM_ELEMENT_NAMES.includes(tag)) {
+      throw invalid(`profile "${name}": "${e.tag}" is a reserved name and can never be a custom element.`);
+    } else if (!isValidCustomElementName(tag)) {
+      throw invalid(`profile "${name}": "${e.tag}" is not a valid custom element name.`);
+    }
+    if (seen.has(tag)) throw invalid(`profile "${name}": custom element "${e.tag}" is listed twice.`);
+    seen.add(tag);
+    const attributes = e.attributes.map((a) => a.toLowerCase());
+    checkAttributeNames(`profile "${name}" custom element "${e.tag}"`, attributes);
+    customElements.push(Object.freeze({ tag, attributes: Object.freeze(attributes) }));
+  }
+
+  return Object.freeze({
+    name,
+    version,
+    mode: def.mode,
+    elements: Object.freeze(elements),
+    urlAttributes: Object.freeze([...def.urlAttributes].map((a) => a.toLowerCase())),
+    urlSchemes: Object.freeze([...def.urlSchemes]),
+    allowedDataAttributes: Object.freeze([...def.allowedDataAttributes]),
+    allowStyleAttribute: false,
+    customElements: Object.freeze(customElements),
+    blockRelativeAutoLoadUrls: def.blockRelativeAutoLoadUrls,
+  });
+}
+
+/**
+ * Registers a NEW profile under `definition.name`. The definition is
+ * validated (typed `INVALID_PROFILE`/`PROFILE_MISMATCH` errors) and stored as
+ * a deeply frozen copy. Built-in profiles can never be replaced, and an
+ * existing registered name must be `unregisterProfile`d first -- profiles
+ * are versioned allowlists, not mutable settings. Returns the frozen
+ * profile as registered.
+ */
+export function registerProfile(definition: ProfileDefinition): ProfileDefinition {
+  const frozen = validateAndFreeze(definition);
+  const reg = registry();
+  if (reg.has(frozen.name)) {
+    throw invalid(
+      isBuiltin(frozen.name)
+        ? `"${frozen.name}" is a built-in profile and is immutable; derive a new profile with deriveProfile() under another name.`
+        : `a profile named "${frozen.name}" is already registered; unregisterProfile() it first.`,
+      { name: frozen.name },
+    );
+  }
+  reg.set(frozen.name, frozen);
+  return frozen;
+}
+
+/** Removes a profile added with `registerProfile`. Returns whether it existed. Built-in profiles cannot be unregistered. */
+export function unregisterProfile(name: string): boolean {
+  if (typeof name !== "string") throw invalid(`unregisterProfile() needs a profile name string.`);
+  if (isBuiltin(name)) throw invalid(`"${name}" is a built-in profile and cannot be unregistered.`, { name });
+  return registry().delete(name);
+}
+
+export interface DeriveProfileOverrides {
+  /** Name of the new profile (required; must differ from the base). */
+  name: string;
+  /** Defaults to the base's `version`... which must then match the name's `-v<N>` suffix, so set it when the name changes version. */
+  version?: number;
+  /** Replaces the base's element map when given. */
+  elements?: Readonly<Record<string, readonly string[]>>;
+  /** Extra elements merged over the base's. */
+  addElements?: Readonly<Record<string, readonly string[]>>;
+  urlAttributes?: readonly string[];
+  urlSchemes?: readonly string[];
+  allowedDataAttributes?: readonly string[];
+  /** Custom elements to allow (exact tags or `prefix-*` patterns); REPLACES the base's list. */
   customElements?: readonly CustomElementAllowlistEntry[];
+  blockRelativeAutoLoadUrls?: boolean;
 }
 
 /**
- * Registers (or extends) a profile's custom-element allowlist. Built-in
- * profiles (`plain-text-v1`, `article-v1`, `ui-v1`, `email-v1`) already
- * exist in the registry; this is how an application adds its own custom
- * elements to `ui-v1` (or a future custom-element-capable profile) without
- * forking the whole allowlist. Calling this multiple times for the same
- * profile is additive (later calls add more tags; they do not replace
- * earlier ones).
+ * Builds (does not register) a new profile definition from a registered base
+ * plus overrides. Pure: the base is never modified. Pass the result to
+ * `registerProfile`. This is how an application adds custom elements,
+ * `data-*` names, or an extra scheme to a built-in profile without
+ * mutating it.
  */
-export function defineProfile(profileName: string, options: DefineProfileOptions): void {
-  const entry = registry.get(profileName);
-  if (!entry) {
-    throw new RangeError(
-      `safe-fragment: defineProfile("${profileName}", ...) -- no such profile is registered. ` +
-        `Built-ins are "plain-text-v1", "article-v1", "ui-v1", "email-v1".`,
-    );
-  }
-  if (options.customElements && options.customElements.length > 0 && !entry.definition.allowCustomElements) {
-    throw new RangeError(
-      `safe-fragment: defineProfile("${profileName}", ...) -- this profile does not allow custom elements ` +
-        `(allowCustomElements is false). Only "ui-v1" ships with custom elements enabled.`,
-    );
-  }
-  for (const custom of options.customElements ?? []) {
-    const tag = custom.tag.toLowerCase();
-    if (!tag.includes("-")) {
-      throw new RangeError(
-        `safe-fragment: defineProfile("${profileName}", ...) -- custom element tag "${custom.tag}" ` + `must contain a hyphen, per the Custom Elements spec.`,
-      );
-    }
-    entry.customElements.set(tag, { tag, attributes: custom.attributes.map((a) => a.toLowerCase()) });
-  }
+export function deriveProfile(base: string | ProfileDefinition, overrides: DeriveProfileOverrides): ProfileDefinition {
+  const baseDef = typeof base === "string" ? registry().get(base) : base;
+  if (!baseDef) throw invalid(`deriveProfile("${String(base)}", ...) -- no such profile is registered.`, { base });
+  if (typeof overrides !== "object" || overrides === null || typeof overrides.name !== "string")
+    throw invalid(`deriveProfile() needs overrides with a "name".`);
+  if (overrides.name === baseDef.name) throw invalid(`deriveProfile() must produce a differently named profile than its base ("${baseDef.name}").`);
+  return {
+    name: overrides.name,
+    version: overrides.version ?? baseDef.version,
+    mode: baseDef.mode,
+    elements: { ...(overrides.elements ?? baseDef.elements), ...(overrides.addElements ?? {}) },
+    urlAttributes: overrides.urlAttributes ?? baseDef.urlAttributes,
+    urlSchemes: overrides.urlSchemes ?? baseDef.urlSchemes,
+    allowedDataAttributes: overrides.allowedDataAttributes ?? baseDef.allowedDataAttributes,
+    allowStyleAttribute: false,
+    customElements: overrides.customElements ?? baseDef.customElements,
+    blockRelativeAutoLoadUrls: overrides.blockRelativeAutoLoadUrls ?? baseDef.blockRelativeAutoLoadUrls,
+  };
 }
 
 /** Looks up a profile definition by name. Returns `undefined` for an unknown profile. */
 export function getProfile(name: string): ProfileDefinition | undefined {
-  return registry.get(name)?.definition;
+  return registry().get(name);
 }
 
-/** Looks up the application-registered custom-element allowlist for a profile. Empty map if none registered. */
-export function getCustomElementAllowlist(name: string): ReadonlyMap<string, CustomElementAllowlistEntry> {
-  return registry.get(name)?.customElements ?? new Map();
-}
-
-/** Lists all currently-registered profile names (built-ins plus any registered via a future `registerProfileDefinition`, once/if that lands). */
+/** Lists all currently-registered profile names: the built-ins plus anything added via `registerProfile`. */
 export function listProfiles(): readonly string[] {
-  return [...registry.keys()];
+  return [...registry().keys()];
 }

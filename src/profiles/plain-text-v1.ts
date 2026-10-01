@@ -7,13 +7,15 @@ import type { ProfileDefinition } from "../policy/profile.js";
  * (usernames, comments-as-plain-text, log lines) -- it has zero attack
  * surface because no HTML parser ever runs on untrusted input.
  */
-export const PLAIN_TEXT_V1: ProfileDefinition = Object.freeze({
+export const PLAIN_TEXT_V1_PROFILE: ProfileDefinition = Object.freeze({
   name: "plain-text-v1",
+  version: 1,
   mode: "text",
   elements: Object.freeze({}),
   urlAttributes: Object.freeze([]),
   urlSchemes: Object.freeze([]),
   allowedDataAttributes: Object.freeze([]),
   allowStyleAttribute: false,
-  allowCustomElements: false,
+  customElements: Object.freeze([]),
+  blockRelativeAutoLoadUrls: false,
 });

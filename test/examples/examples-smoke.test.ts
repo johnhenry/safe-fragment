@@ -40,7 +40,7 @@ describe("examples (run against the built dist/, via npm run examples)", () => {
     saveButton.click();
     await expect(actionPromise).resolves.toBe("save");
 
-    // The custom element survived enforceProfile (it was registered via defineProfile).
+    // The custom element survived enforceProfile (its profile was derived from ui-v1 with deriveProfile).
     expect(element.querySelector("rating-stars")).toBeTruthy();
   });
 

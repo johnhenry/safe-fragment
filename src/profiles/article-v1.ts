@@ -12,8 +12,9 @@ const GLOBAL_ATTRS = Object.freeze(["id", "lang", "dir", "title"]);
  * and relative URLs -- `javascript:`, `data:`, `vbscript:`, `file:` are
  * always rejected regardless of markup.
  */
-export const ARTICLE_V1: ProfileDefinition = Object.freeze({
+export const ARTICLE_V1_PROFILE: ProfileDefinition = Object.freeze({
   name: "article-v1",
+  version: 1,
   mode: "html",
   elements: Object.freeze({
     p: GLOBAL_ATTRS,
@@ -73,5 +74,6 @@ export const ARTICLE_V1: ProfileDefinition = Object.freeze({
   urlSchemes: SAFE_DEFAULT_URL_SCHEMES,
   allowedDataAttributes: Object.freeze([]),
   allowStyleAttribute: false,
-  allowCustomElements: false,
+  customElements: Object.freeze([]),
+  blockRelativeAutoLoadUrls: false,
 });

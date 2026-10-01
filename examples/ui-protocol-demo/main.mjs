@@ -5,7 +5,9 @@
 // `npm run build`. Also exercised directly by
 // test/integration/examples-smoke.test.ts.
 
-import { registerSafeFragment, defineProfile } from "../../dist/index.js";
+import { registerSafeFragment, registerProfile, deriveProfile, getProfile } from "../../dist/index.js";
+
+const PROFILE = "demo-ui-v1";
 
 const UI_MARKUP = `
   <div class="toolbar">
@@ -16,16 +18,19 @@ const UI_MARKUP = `
 `;
 
 /**
- * Registers <safe-fragment>, a "rating-stars" custom element under
- * ui-v1's allowlist, wires up safe-fragment:action handling, and renders
+ * Registers <safe-fragment>, a "demo-ui-v1" profile (ui-v1 + a
+ * "rating-stars" custom element), wires up safe-fragment:action handling, and renders
  * the fixture markup above into `container`.
  */
 export async function run(container, { tagName = "safe-fragment", onAction } = {}) {
   registerSafeFragment({ tagName });
-  defineProfile("ui-v1", { customElements: [{ tag: "rating-stars", attributes: ["value", "max"] }] });
+  // Built-in profiles are immutable: derive a new one that also allows <rating-stars>.
+  if (!getProfile(PROFILE)) {
+    registerProfile(deriveProfile("ui-v1", { name: PROFILE, customElements: [{ tag: "rating-stars", attributes: ["value", "max"] }] }));
+  }
 
   const el = document.createElement(tagName);
-  el.setAttribute("profile", "ui-v1");
+  el.setAttribute("profile", PROFILE);
   container.appendChild(el);
 
   const actions = [];

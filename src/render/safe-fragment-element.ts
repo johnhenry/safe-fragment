@@ -1,7 +1,7 @@
 import { SafeFragmentError, isSafeFragmentError, type SafeFragmentErrorCode } from "../errors.js";
 import type { RenderMode, RenderScope, BeforeRenderDetail, RejectDetail, RenderResult, SourceKind, ClearDetail } from "../types.js";
 import type { SafeFragmentElement } from "./element-types.js";
-import { getProfile, getCustomElementAllowlist } from "../policy/registry.js";
+import { getProfile } from "../policy/registry.js";
 import { sanitize, DEFAULT_MAX_INPUT_LENGTH } from "../sanitize/index.js";
 import { fetchSource, ABORT_SUPERSEDED, type FetchCapability, DEFAULT_FETCH_CAPABILITY } from "../source/fetch.js";
 
@@ -51,6 +51,7 @@ export function createSafeFragmentElementClass(
 
     #htmlProperty: unknown = null;
     #scheduled = false;
+    #scheduleEpoch = 0;
     #renderToken = 0;
     #hasRenderedOnce = false;
     #root: Element | null = null;
@@ -245,6 +246,8 @@ export function createSafeFragmentElementClass(
      * - `disabled`   -- the element is disabled; `error.code` is `DISABLED`.
      */
     async render(): Promise<RenderResult> {
+      // An explicit render supersedes any automatic one already queued.
+      this.#scheduleEpoch++;
       if (this.disabled) {
         const error = new SafeFragmentError("DISABLED", "render() was called on a disabled element.");
         this.#dispatchReject(error);
@@ -324,11 +327,9 @@ export function createSafeFragmentElementClass(
       }
       if (stale()) return this.#supersededResult();
 
-      const customElements = getCustomElementAllowlist(profileName);
-
       let sanitizeResult;
       try {
-        sanitizeResult = await sanitize(this.ownerDocument, rawHtml, profileDef, customElements, { truncated: false, maxInputLength });
+        sanitizeResult = await sanitize(this.ownerDocument, rawHtml, profileDef, { truncated: false, maxInputLength });
       } catch (error) {
         if (stale()) return this.#supersededResult();
         return this.#rejectRender(error);
@@ -540,8 +541,10 @@ export function createSafeFragmentElementClass(
       if (this.renderMode === "once" && this.#hasRenderedOnce) return;
       if (this.#scheduled) return;
       this.#scheduled = true;
+      const epoch = this.#scheduleEpoch;
       queueMicrotask(() => {
         this.#scheduled = false;
+        if (epoch !== this.#scheduleEpoch) return; // render() was called explicitly in the meantime
         // Re-check mode/disabled/connected here, not just at scheduling
         // time: this callback can run after connectedCallback queued it but
         // before render-mode/profile attributes were set imperatively (a

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { sanitize } from "../../src/sanitize/index.js";
-import { getProfile, getCustomElementAllowlist } from "../../src/policy/registry.js";
+import { getProfile } from "../../src/policy/registry.js";
 import { hasNativeSanitizer } from "../../src/sanitize/capabilities.js";
 import { XSS_CORPUS } from "../fixtures/xss-corpus.js";
 
@@ -20,9 +20,8 @@ describe(`adversarial XSS corpus (native supported in this browser: ${hasNativeS
         it(fixture.name, async () => {
           const profile = getProfile(fixture.profile);
           expect(profile, `profile "${fixture.profile}" must exist`).toBeTruthy();
-          const customElements = getCustomElementAllowlist(fixture.profile);
 
-          const { fragment } = await sanitize(document, fixture.input, profile!, customElements, { forceEngine: engine });
+          const { fragment } = await sanitize(document, fixture.input, profile!, { forceEngine: engine });
           const html = serialize(fragment);
           const lower = html.toLowerCase();
 
@@ -50,7 +49,7 @@ describe(`adversarial XSS corpus (native supported in this browser: ${hasNativeS
 
   it("target=_blank anchors get rel=noopener noreferrer forced (article-v1)", async () => {
     const profile = getProfile("article-v1")!;
-    const { fragment } = await sanitize(document, '<a href="https://good.example/" target="_blank">x</a>', profile, new Map());
+    const { fragment } = await sanitize(document, '<a href="https://good.example/" target="_blank">x</a>', profile);
     const div = document.createElement("div");
     div.appendChild(fragment);
     const a = div.querySelector("a")!;

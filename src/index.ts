@@ -11,15 +11,22 @@
  * this API, by design -- see docs/security-model.md.
  */
 
-export { registerSafeFragment } from "./render/register.js";
+export { registerSafeFragment, getSafeFragmentElementClass } from "./render/register.js";
+export { createSafeFragmentElementClass } from "./render/safe-fragment-element.js";
+export type { SafeFragmentElementDeps } from "./render/safe-fragment-element.js";
+export type { SafeFragmentElement, SafeFragmentEventMap } from "./render/element-types.js";
 export type { RegisterSafeFragmentOptions } from "./render/register.js";
 
 export { registerExampleSandbox } from "./sandbox/register.js";
 export type { RegisterExampleSandboxOptions } from "./sandbox/register.js";
 
-export { defineProfile, getProfile, listProfiles } from "./policy/registry.js";
-export type { DefineProfileOptions } from "./policy/registry.js";
+export { registerProfile, unregisterProfile, deriveProfile, getProfile, listProfiles } from "./policy/registry.js";
+export type { DeriveProfileOverrides } from "./policy/registry.js";
 export type { ProfileDefinition, CustomElementAllowlistEntry } from "./policy/profile.js";
+export { RESERVED_CUSTOM_ELEMENT_NAMES, isValidCustomElementName } from "./policy/profile.js";
+
+export { sanitizeToFragment, sanitizeToFragmentSync } from "./sanitize/public.js";
+export type { SanitizeToFragmentOptions, SanitizeToFragmentResult } from "./sanitize/public.js";
 
 export { SafeFragmentError, isSafeFragmentError } from "./errors.js";
 export type { SafeFragmentErrorCode } from "./errors.js";
@@ -35,6 +42,9 @@ export type {
   RejectDetail,
   ActionDetail,
   LinkDetail,
+  ClearDetail,
+  RenderResult,
+  SourceKind,
 } from "./types.js";
 
 export { preloadSanitizer } from "./sanitize/preload.js";
@@ -47,10 +57,11 @@ export type { UrlCheckResult } from "./policy/url.js";
 export type { FetchCapability } from "./source/fetch.js";
 export { DEFAULT_FETCH_CAPABILITY } from "./source/fetch.js";
 
-// Built-in profile identifiers, exported as named constants so callers
-// don't need to hand-type profile name strings (and get IDE
-// autocomplete/typo protection).
+// Built-in profile NAMES, as constants (autocomplete and typo protection).
+// These are strings, not profile definitions: read a definition with
+// `getProfile(ARTICLE_V1)`. Built-ins are frozen and cannot be modified.
 export const PLAIN_TEXT_V1 = "plain-text-v1";
 export const ARTICLE_V1 = "article-v1";
 export const UI_V1 = "ui-v1";
 export const EMAIL_V1 = "email-v1";
+export type BuiltInProfileName = typeof PLAIN_TEXT_V1 | typeof ARTICLE_V1 | typeof UI_V1 | typeof EMAIL_V1;

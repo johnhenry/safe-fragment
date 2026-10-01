@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { sanitize } from "../../src/sanitize/index.js";
-import { getProfile, getCustomElementAllowlist } from "../../src/policy/registry.js";
+import { getProfile } from "../../src/policy/registry.js";
 import { hasNativeSanitizer } from "../../src/sanitize/capabilities.js";
 import { BENIGN_CORPUS } from "../fixtures/benign-corpus.js";
 
@@ -13,7 +13,7 @@ describe("benign content survives sanitization", () => {
       for (const fixture of BENIGN_CORPUS) {
         it(fixture.name, async () => {
           const profile = getProfile(fixture.profile)!;
-          const { fragment } = await sanitize(document, fixture.input, profile, getCustomElementAllowlist(fixture.profile), { forceEngine: engine });
+          const { fragment } = await sanitize(document, fixture.input, profile, { forceEngine: engine });
           const host = document.createElement("div");
           host.appendChild(fragment);
           const text = host.textContent ?? "";

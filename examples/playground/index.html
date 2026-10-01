@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>safe-fragment -- playground</title>
     <link rel="stylesheet" href="./style.css" />
-      <!-- dompurify import map: Safari (and any browser without Element.setHTML) takes the DOMPurify
+    <!-- dompurify import map: Safari (and any browser without Element.setHTML) takes the DOMPurify
          path, which resolves the bare specifier "dompurify" at render time. Served from the repo root. -->
     <script type="importmap">
       { "imports": { "dompurify": "../../node_modules/dompurify/dist/purify.es.mjs" } }
@@ -16,9 +16,8 @@
       <h1>safe-fragment <span class="dim">/ playground</span></h1>
       <p class="lede">
         Type or paste HTML, or click a real attack from the test corpus. The left box is
-        <strong>completely unprotected</strong> -- literal <code>element.innerHTML = input</code> in a sandboxed
-        iframe, so if something fires, you'll see it. The right box is the same input through
-        <code>&lt;safe-fragment&gt;</code>.
+        <strong>completely unprotected</strong> -- literal <code>element.innerHTML = input</code> in a sandboxed iframe, so if something fires, you'll see it.
+        The right box is the same input through <code>&lt;safe-fragment&gt;</code>.
       </p>
       <nav class="tabs" role="tablist">
         <button class="tab active" data-tab="rich" role="tab" aria-selected="true">Rich text (article-v1)</button>
@@ -53,11 +52,10 @@
             <ul id="diff-list" class="diff-list"></ul>
             <p class="fine-print">
               This checklist is the demo's own before/after comparison of your raw input against
-              <code>getRenderedRoot().innerHTML</code>. It exists because <code>SanitizationReport</code> below only
-              records what <code>enforceProfile()</code> itself removed -- not what the underlying sanitizer engine
-              (native Sanitizer API / DOMPurify) already stripped as its own baseline defense before
-              <code>enforceProfile</code> ever sees the DOM. Both layers are real; the report just doesn't currently
-              attribute the engine's own removals. See <code>AGENTS.md</code>.
+              <code>getRenderedRoot().innerHTML</code>. It exists because <code>SanitizationReport</code> below only records what
+              <code>enforceProfile()</code> itself removed -- not what the underlying sanitizer engine (native Sanitizer API / DOMPurify) already stripped as
+              its own baseline defense before <code>enforceProfile</code> ever sees the DOM. Both layers are real; the report just doesn't currently attribute
+              the engine's own removals. See <code>AGENTS.md</code>.
             </p>
           </div>
           <div class="box">
@@ -70,9 +68,10 @@
       <!-- ============ AGENT UI TAB ============ -->
       <section id="panel-agent" class="panel">
         <p class="lede">
-          <code>ui-v1</code> lets an application allowlist specific custom elements and a
-          <code>data-action</code>/<code>data-value</code> protocol. Markup -- even markup from an LLM -- can
-          <em>request</em> an action; only the host application decides what, if anything, actually happens.
+          A profile derived from <code>ui-v1</code> lets an application allowlist specific custom elements and a <code>data-action</code>/<code
+            >data-value</code
+          >
+          protocol. Markup -- even markup from an LLM -- can <em>request</em> an action; only the host application decides what, if anything, actually happens.
         </p>
         <div class="chips" id="agent-chips"></div>
         <div class="compare-row">
@@ -89,10 +88,7 @@
 
       <!-- ============ PLAIN TEXT TAB ============ -->
       <section id="panel-plain" class="panel">
-        <p class="lede">
-          The safest profile: no HTML parser runs on the input at all. Everything, including the payload above,
-          becomes inert text.
-        </p>
+        <p class="lede">The safest profile: no HTML parser runs on the input at all. Everything, including the payload above, becomes inert text.</p>
         <div class="compare-row">
           <div class="box">
             <h3>Input</h3>
@@ -108,9 +104,8 @@
 
     <footer>
       <p>
-        <a href="../../README.md">README</a> · <a href="../article-viewer/">article-viewer</a> ·
-        <a href="../ui-protocol-demo/">ui-protocol-demo</a> · <a href="../sandbox-playground/">sandbox-playground</a>
-        · <a href="https://github.com/johnhenry/safe-fragment">source</a>
+        <a href="../../README.md">README</a> · <a href="../article-viewer/">article-viewer</a> · <a href="../ui-protocol-demo/">ui-protocol-demo</a> ·
+        <a href="../sandbox-playground/">sandbox-playground</a> · <a href="https://github.com/johnhenry/safe-fragment">source</a>
       </p>
     </footer>
 

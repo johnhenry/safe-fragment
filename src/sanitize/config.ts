@@ -1,5 +1,6 @@
 import { DROP_SUBTREE_ELEMENTS } from "./dangerous.js";
-import type { ProfileDefinition, CustomElementAllowlistEntry } from "../policy/profile.js";
+import type { ProfileDefinition } from "../policy/profile.js";
+import { matchCustomElement } from "../policy/profile.js";
 
 /**
  * Builds a baseline structural allowlist (element + attribute names only --
@@ -26,7 +27,7 @@ export interface BaselineConfig {
   customElementTagCheck: (tag: string) => boolean;
 }
 
-export function buildBaselineConfig(profile: ProfileDefinition, customElements: ReadonlyMap<string, CustomElementAllowlistEntry>): BaselineConfig {
+export function buildBaselineConfig(profile: ProfileDefinition): BaselineConfig {
   const allowedElements = new Set<string>(Object.keys(profile.elements));
   const allowedAttributes = new Set<string>();
 
@@ -34,11 +35,13 @@ export function buildBaselineConfig(profile: ProfileDefinition, customElements: 
     for (const attr of attrs) allowedAttributes.add(attr);
   }
 
-  if (profile.allowCustomElements) {
-    for (const entry of customElements.values()) {
-      allowedElements.add(entry.tag);
-      for (const attr of entry.attributes) allowedAttributes.add(attr);
-    }
+  // Exact custom-element tags join the element list; prefix patterns
+  // (`ui--*`) cannot be enumerated, so they are matched by the DOMPurify
+  // tagNameCheck below (the native engine runs in blocklist mode and does
+  // not need them). Their attribute names join the attribute allowlist.
+  for (const entry of profile.customElements) {
+    if (!entry.tag.endsWith("*")) allowedElements.add(entry.tag);
+    for (const attr of entry.attributes) allowedAttributes.add(attr);
   }
 
   // `data-*` names are literal allowlist entries in both engines (neither
@@ -49,7 +52,7 @@ export function buildBaselineConfig(profile: ProfileDefinition, customElements: 
     dropSubtreeElements: [...DROP_SUBTREE_ELEMENTS],
     allowedElements: [...allowedElements],
     allowedAttributes: [...allowedAttributes],
-    allowCustomElements: profile.allowCustomElements,
-    customElementTagCheck: (tag: string) => allowedElements.has(tag),
+    allowCustomElements: profile.customElements.length > 0,
+    customElementTagCheck: (tag: string) => matchCustomElement(profile, tag) !== undefined,
   };
 }

@@ -10,24 +10,28 @@
 // the automated smoke test); the interactive UI is wired up by
 // `mountPlayground()`, called directly from index.html's own script.
 
-import { registerSafeFragment, defineProfile } from "../../dist/index.js";
+import { registerSafeFragment, registerProfile, deriveProfile, getProfile } from "../../dist/index.js";
+
+export const AGENT_PROFILE = "playground-ui-v1";
 
 const registeredTags = new Set();
-let profileDefined = false;
+
 function ensureRegistered(tagName = "safe-fragment") {
   if (!registeredTags.has(tagName)) {
     registeredTags.add(tagName);
     registerSafeFragment({ tagName });
   }
-  if (!profileDefined) {
-    profileDefined = true;
-    defineProfile("ui-v1", {
-      customElements: [
-        { tag: "ui-card", attributes: ["tone"] },
-        { tag: "ui-stat", attributes: ["label", "value", "trend"] },
-        { tag: "ui-button", attributes: ["variant", "disabled", "data-action", "data-value"] },
-      ],
-    });
+  if (!getProfile(AGENT_PROFILE)) {
+    registerProfile(
+      deriveProfile("ui-v1", {
+        name: AGENT_PROFILE,
+        customElements: [
+          { tag: "ui-card", attributes: ["tone"] },
+          { tag: "ui-stat", attributes: ["label", "value", "trend"] },
+          { tag: "ui-button", attributes: ["variant", "disabled", "data-action", "data-value"] },
+        ],
+      }),
+    );
   }
 }
 

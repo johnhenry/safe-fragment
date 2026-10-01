@@ -1,13 +1,14 @@
 import type { BaselineConfig } from "./config.js";
 import type { SanitizationNote } from "../types.js";
 import { SafeFragmentError } from "../errors.js";
+import { getSharedState, type SharedState } from "../shared-state.js";
 
 /**
  * Narrow slice of the DOMPurify instance surface this module actually
  * uses, so the rest of the code doesn't need `@types/dompurify` in scope.
  */
 export interface DOMPurifyLike {
-  addHook(name: string, hook: (node: Element) => void): void;
+  addHook(name: string, hook: (node: Element, data?: unknown) => void): void;
   sanitize(dirty: string, config: Record<string, unknown>): DocumentFragment;
   /** DOMPurify's own log of what the last `sanitize()` call removed. */
   removed?: ReadonlyArray<{ element?: Node; attribute?: Attr | null; from?: Node }>;
@@ -20,18 +21,22 @@ export type DOMPurifyFactory = (window: Window) => DOMPurifyLike;
 /** Supplies the DOMPurify factory. See `RegisterSafeFragmentOptions.loadDOMPurify`. */
 export type DOMPurifyLoader = () => Promise<DOMPurifyFactory>;
 
+/** The custom-element tag predicate of the sanitize() call currently running on an instance (sanitization is synchronous, so this is never contended). */
+const activeTagChecks = new WeakMap<DOMPurifyLike, (tag: string) => boolean>();
+
 const FIX_HINT =
   "Add `dompurify` to your page's import map (or bundle it), or pass `loadDOMPurify: () => import(url).then((m) => m.default)` to registerSafeFragment() / preloadSanitizer().";
 
-// Module-level state is fine here: none of it touches a DOM global.
-let configuredLoader: DOMPurifyLoader | undefined;
-let factoryPromise: Promise<DOMPurifyFactory> | undefined;
-let factoryLoaderUsed: DOMPurifyLoader | undefined;
-const instances = new WeakMap<object, DOMPurifyLike>();
+// State lives in the shared (globalThis-keyed) store so the ESM and CJS
+// builds of this package share ONE instance cache and loader.
+function purifyState(): NonNullable<SharedState["purify"]> {
+  const shared = getSharedState();
+  return (shared.purify ??= { instances: new WeakMap() });
+}
 
 /** Sets the app-wide DOMPurify loader (called by `registerSafeFragment({ loadDOMPurify })`). */
 export function setDOMPurifyLoader(loader: DOMPurifyLoader | undefined): void {
-  configuredLoader = loader;
+  purifyState().loader = loader;
 }
 
 /**
@@ -45,9 +50,10 @@ const defaultLoader: DOMPurifyLoader = async () => {
 };
 
 function loadFactory(loader: DOMPurifyLoader | undefined): Promise<DOMPurifyFactory> {
-  const effective = loader ?? configuredLoader ?? defaultLoader;
-  if (factoryPromise && factoryLoaderUsed === effective) return factoryPromise;
-  factoryLoaderUsed = effective;
+  const st = purifyState();
+  const effective = loader ?? st.loader ?? defaultLoader;
+  if (st.factoryPromise && st.factoryLoaderUsed === effective) return st.factoryPromise;
+  st.factoryLoaderUsed = effective;
   const promise = (async () => {
     try {
       const loaded = (await effective()) as unknown as DOMPurifyFactory | { default?: DOMPurifyFactory };
@@ -58,10 +64,10 @@ function loadFactory(loader: DOMPurifyLoader | undefined): Promise<DOMPurifyFact
       throw new SafeFragmentError("SANITIZER_UNAVAILABLE", `Failed to load the DOMPurify fallback sanitizer. ${FIX_HINT}`, { cause });
     }
   })();
-  factoryPromise = promise;
+  st.factoryPromise = promise;
   promise.catch(() => {
     // Allow a later retry (e.g. after the import map is fixed) instead of caching the failure forever.
-    if (factoryPromise === promise) factoryPromise = undefined;
+    if (st.factoryPromise === promise) st.factoryPromise = undefined;
   });
   return promise;
 }
@@ -75,6 +81,7 @@ function loadFactory(loader: DOMPurifyLoader | undefined): Promise<DOMPurifyFact
  * render after the first under such a policy.
  */
 export async function getDOMPurify(win: Window, loader?: DOMPurifyLoader): Promise<DOMPurifyLike> {
+  const instances = purifyState().instances;
   const cached = instances.get(win);
   if (cached) return cached;
   const factory = await loadFactory(loader);
@@ -89,6 +96,16 @@ export async function getDOMPurify(win: Window, loader?: DOMPurifyLoader): Promi
   if (purify.isSupported === false) {
     throw new SafeFragmentError("SANITIZER_UNAVAILABLE", "DOMPurify reports that this window is not supported (missing DOM features).");
   }
+  // Custom elements: DOMPurify's own "basic custom element" test rejects
+  // valid names with consecutive hyphens (`ui--card`), so exact tags and
+  // prefix patterns are allowed through its documented element hook instead,
+  // using the profile of the call currently in progress.
+  purify.addHook("uponSanitizeElement", (node, data) => {
+    const check = activeTagChecks.get(purify);
+    const d = data as unknown as { tagName?: string; allowedTags?: Record<string, boolean> } | undefined;
+    if (check && d?.tagName && d.allowedTags && d.tagName.includes("-") && check(d.tagName)) d.allowedTags[d.tagName] = true;
+    void node;
+  });
   // DOMPurify force-removes (subtree and all) any element carrying `is=`; the
   // native engine just drops the attribute. Normalize to the latter so both
   // engines keep the element and lose only the customized-built-in hook (the
@@ -102,7 +119,7 @@ export async function getDOMPurify(win: Window, loader?: DOMPurifyLoader): Promi
 
 /** The already-created DOMPurify instance for `win`, if any -- the synchronous API's only way to reach DOMPurify. */
 export function peekDOMPurify(win: Window | null | undefined): DOMPurifyLike | undefined {
-  return win ? instances.get(win) : undefined;
+  return win ? purifyState().instances.get(win) : undefined;
 }
 
 export interface DOMPurifyOutput {
@@ -121,6 +138,7 @@ export interface DOMPurifyOutput {
  */
 export function sanitizeWithDOMPurify(purify: DOMPurifyLike, html: string, baseline: BaselineConfig): DOMPurifyOutput {
   let fragment: DocumentFragment;
+  if (baseline.allowCustomElements) activeTagChecks.set(purify, baseline.customElementTagCheck);
   try {
     fragment = purify.sanitize(html, {
       // The locked allowlist -- see function doc comment above.
@@ -153,16 +171,11 @@ export function sanitizeWithDOMPurify(purify: DOMPurifyLike, html: string, basel
 
       RETURN_DOM_FRAGMENT: true,
       RETURN_DOM: false,
-      CUSTOM_ELEMENT_HANDLING: baseline.allowCustomElements
-        ? {
-            tagNameCheck: baseline.customElementTagCheck,
-            attributeNameCheck: () => true, // enforceProfile is authoritative for attribute names per element
-            allowCustomizedBuiltInElements: false,
-          }
-        : undefined,
     });
   } catch (cause) {
     throw new SafeFragmentError("SANITIZE_FAILED", "DOMPurify threw while sanitizing input.", { cause });
+  } finally {
+    activeTagChecks.delete(purify);
   }
 
   // DOMPurify hands back the input string unchanged when it is unsupported

@@ -30,7 +30,7 @@ describe("DOMPurify instance caching (per window)", () => {
   it("creates exactly one instance per window across many renders", async () => {
     const doc = await makeFrame();
     const a = await getDOMPurify(doc.defaultView as Window);
-    for (let i = 0; i < 5; i++) await sanitize(doc, "<p>x</p>", article, new Map(), { forceEngine: "dompurify" });
+    for (let i = 0; i < 5; i++) await sanitize(doc, "<p>x</p>", article, { forceEngine: "dompurify" });
     expect(peekDOMPurify(doc.defaultView)).toBe(a);
   });
 
@@ -51,9 +51,9 @@ describe("DOMPurify instance caching (per window)", () => {
     const d1 = await makeFrame();
     const d2 = await makeFrame();
     await Promise.all([
-      sanitize(d1, "<p>1</p>", article, new Map(), { forceEngine: "dompurify", loadDOMPurify: loader }),
-      sanitize(d2, "<p>2</p>", article, new Map(), { forceEngine: "dompurify", loadDOMPurify: loader }),
-      sanitize(d1, "<p>3</p>", article, new Map(), { forceEngine: "dompurify", loadDOMPurify: loader }),
+      sanitize(d1, "<p>1</p>", article, { forceEngine: "dompurify", loadDOMPurify: loader }),
+      sanitize(d2, "<p>2</p>", article, { forceEngine: "dompurify", loadDOMPurify: loader }),
+      sanitize(d1, "<p>3</p>", article, { forceEngine: "dompurify", loadDOMPurify: loader }),
     ]);
     expect(calls).toBe(1);
   });
@@ -68,7 +68,7 @@ describe("Trusted Types enforced (CSP require-trusted-types-for 'script'; truste
     expect(() => (doc.createElement("div").innerHTML = "<b>x</b>")).toThrow();
 
     for (let i = 0; i < 4; i++) {
-      const { fragment } = await sanitize(doc, `<p>render ${i}</p><img src=x onerror=alert(1)>`, article, new Map(), { forceEngine: "dompurify" });
+      const { fragment } = await sanitize(doc, `<p>render ${i}</p><img src=x onerror=alert(1)>`, article, { forceEngine: "dompurify" });
       const host = doc.createElement("div");
       host.appendChild(fragment);
       expect(host.querySelector("p")!.textContent).toBe(`render ${i}`);
@@ -85,7 +85,7 @@ describe("loadDOMPurify / error guidance", () => {
       used = true;
       return factory;
     });
-    await sanitize(doc, "<p>x</p>", article, new Map(), { forceEngine: "dompurify" });
+    await sanitize(doc, "<p>x</p>", article, { forceEngine: "dompurify" });
     expect(used).toBe(true);
   });
 
@@ -95,7 +95,7 @@ describe("loadDOMPurify / error guidance", () => {
       throw new TypeError("Failed to resolve module specifier 'dompurify'");
     };
     try {
-      await sanitize(doc, "<p>x</p>", article, new Map(), { forceEngine: "dompurify", loadDOMPurify: failing });
+      await sanitize(doc, "<p>x</p>", article, { forceEngine: "dompurify", loadDOMPurify: failing });
       expect.unreachable();
     } catch (error) {
       expect(isSafeFragmentError(error) && error.code).toBe("SANITIZER_UNAVAILABLE");
@@ -109,10 +109,10 @@ describe("loadDOMPurify / error guidance", () => {
     const failing = async (): Promise<DOMPurifyFactory> => {
       throw new Error("offline");
     };
-    await expect(sanitize(doc, "<p>x</p>", article, new Map(), { forceEngine: "dompurify", loadDOMPurify: failing })).rejects.toMatchObject({
+    await expect(sanitize(doc, "<p>x</p>", article, { forceEngine: "dompurify", loadDOMPurify: failing })).rejects.toMatchObject({
       code: "SANITIZER_UNAVAILABLE",
     });
-    const { fragment } = await sanitize(doc, "<p>x</p>", article, new Map(), { forceEngine: "dompurify", loadDOMPurify: async () => factory });
+    const { fragment } = await sanitize(doc, "<p>x</p>", article, { forceEngine: "dompurify", loadDOMPurify: async () => factory });
     expect(fragment.firstElementChild!.tagName).toBe("P");
   });
 });
@@ -120,14 +120,14 @@ describe("loadDOMPurify / error guidance", () => {
 describe("preloadSanitizer + sync API readiness", () => {
   it("sanitizeSync throws SANITIZER_NOT_READY (fail closed) until DOMPurify is preloaded", async () => {
     const doc = await makeFrame();
-    expect(() => sanitizeSync(doc, "<p>x</p>", article, new Map(), { forceEngine: "dompurify" })).toThrowError(/preloadSanitizer/);
+    expect(() => sanitizeSync(doc, "<p>x</p>", article, { forceEngine: "dompurify" })).toThrowError(/preloadSanitizer/);
     try {
-      sanitizeSync(doc, "<p>x</p>", article, new Map(), { forceEngine: "dompurify" });
+      sanitizeSync(doc, "<p>x</p>", article, { forceEngine: "dompurify" });
     } catch (error) {
       expect(isSafeFragmentError(error) && error.code).toBe("SANITIZER_NOT_READY");
     }
     expect(await preloadSanitizer({ document: doc, engine: "dompurify", loadDOMPurify: async () => factory })).toBe("dompurify");
-    const { fragment } = sanitizeSync(doc, "<p>x<script>1</script></p>", article, new Map(), { forceEngine: "dompurify" });
+    const { fragment } = sanitizeSync(doc, "<p>x<script>1</script></p>", article, { forceEngine: "dompurify" });
     expect(fragment.firstElementChild!.innerHTML).toBe("x");
   });
 

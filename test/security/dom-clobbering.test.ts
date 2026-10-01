@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { sanitize } from "../../src/sanitize/index.js";
-import { getProfile, getCustomElementAllowlist } from "../../src/policy/registry.js";
+import { getProfile } from "../../src/policy/registry.js";
 import { hasNativeSanitizer } from "../../src/sanitize/capabilities.js";
 import { enforceProfile } from "../../src/sanitize/enforce.js";
 
@@ -15,7 +15,7 @@ afterEach(() => {
 
 async function mount(html: string, profileName: string, engine: "native" | "dompurify"): Promise<HTMLElement> {
   const profile = getProfile(profileName)!;
-  const { fragment } = await sanitize(document, html, profile, getCustomElementAllowlist(profileName), { forceEngine: engine });
+  const { fragment } = await sanitize(document, html, profile, { forceEngine: engine });
   const host = document.createElement("div");
   host.appendChild(fragment);
   document.body.appendChild(host);
@@ -95,7 +95,7 @@ describe("enforceProfile id namespacing (unit)", () => {
   it("prefixes author ids that already look prefixed (no special-casing)", () => {
     const t = document.createElement("template");
     t.innerHTML = '<p id="user-content-x">a</p><a href="#user-content-x">b</a>';
-    enforceProfile(t.content, getProfile("article-v1")!, new Map());
+    enforceProfile(t.content, getProfile("article-v1")!);
     expect(t.content.querySelector("p")!.id).toBe("user-content-user-content-x");
     expect(t.content.querySelector("a")!.getAttribute("href")).toBe("#user-content-user-content-x");
   });

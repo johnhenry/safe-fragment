@@ -21,7 +21,9 @@ body {
   padding: 24px 24px 64px;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.55 system-ui, sans-serif;
+  font:
+    15px/1.55 system-ui,
+    sans-serif;
 }
 
 header {
@@ -185,7 +187,7 @@ main {
 }
 
 /* Styling for the ui-v1 demo's allowlisted custom elements -- these are
-   plain undefined elements (defineProfile only allowlists tags for the
+   plain undefined elements (a profile only allowlists tags for the
    sanitizer, it doesn't register a class), so any look comes from here. */
 ui-card {
   display: block;

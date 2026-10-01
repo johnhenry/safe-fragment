@@ -1,4 +1,5 @@
-import type { ProfileDefinition, CustomElementAllowlistEntry } from "../policy/profile.js";
+import type { ProfileDefinition } from "../policy/profile.js";
+import { matchCustomElement } from "../policy/profile.js";
 import type { SanitizationNote } from "../types.js";
 import { checkUrl } from "../policy/url.js";
 import { DROP_SUBTREE_ELEMENTS, HTML_NAMESPACE } from "./dangerous.js";
@@ -21,6 +22,109 @@ const HARD_DENYLIST_ATTRS = new Set(["formaction", "srcdoc", "action", "xlink:hr
 function isHardDenied(attrName: string): boolean {
   const lower = attrName.toLowerCase();
   return lower.startsWith("on") || HARD_DENYLIST_ATTRS.has(lower);
+}
+
+/**
+ * Attribute names that are URL-valued wherever they appear, whatever the
+ * profile's own `urlAttributes` says. Custom-element attribute lists are
+ * application-supplied; without this a registered `<my-card src="javascript:...">`
+ * would skip the scheme check entirely.
+ */
+const URL_VALUED_ATTRS: ReadonlySet<string> = new Set([
+  "src",
+  "href",
+  "srcset",
+  "imagesrcset",
+  "poster",
+  "action",
+  "formaction",
+  "xlink:href",
+  "background",
+  "ping",
+  "cite",
+  "data",
+  "longdesc",
+  "manifest",
+  "codebase",
+  "lowsrc",
+  "dynsrc",
+  "icon",
+]);
+
+/** URL-valued attributes the browser fetches as soon as the element exists (no click needed). */
+const AUTO_LOAD_ATTRS: ReadonlySet<string> = new Set(["src", "srcset", "imagesrcset", "poster", "background", "data", "lowsrc", "dynsrc"]);
+
+function isAsciiSpace(code: number): boolean {
+  return code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0c || code === 0x0d;
+}
+
+/**
+ * Extracts the URL of every candidate in a `srcset`/`imagesrcset` value,
+ * following the HTML "parse a srcset attribute" algorithm: a URL is a run of
+ * non-whitespace characters (it may itself contain commas); trailing commas
+ * are stripped from it; otherwise descriptors run to the next comma that is
+ * not inside parentheses. Character scan, no regex.
+ */
+export function parseSrcsetUrls(value: string): string[] {
+  const urls: string[] = [];
+  let pos = 0;
+  const n = value.length;
+  for (;;) {
+    while (pos < n && (isAsciiSpace(value.charCodeAt(pos)) || value[pos] === ",")) pos++;
+    if (pos >= n) break;
+    const start = pos;
+    while (pos < n && !isAsciiSpace(value.charCodeAt(pos))) pos++;
+    let url = value.slice(start, pos);
+    if (url.endsWith(",")) {
+      while (url.endsWith(",")) url = url.slice(0, -1);
+      if (url !== "") urls.push(url);
+      continue;
+    }
+    urls.push(url);
+    // Skip descriptors: up to the next comma outside parentheses.
+    let depth = 0;
+    while (pos < n) {
+      const ch = value[pos];
+      if (ch === "(") depth++;
+      else if (ch === ")" && depth > 0) depth--;
+      else if (ch === "," && depth === 0) break;
+      pos++;
+    }
+  }
+  return urls;
+}
+
+function splitOnWhitespace(value: string): string[] {
+  const out: string[] = [];
+  let start = -1;
+  for (let i = 0; i <= value.length; i++) {
+    const ws = i === value.length || isAsciiSpace(value.charCodeAt(i));
+    if (!ws && start === -1) start = i;
+    else if (ws && start !== -1) {
+      out.push(value.slice(start, i));
+      start = -1;
+    }
+  }
+  return out;
+}
+
+function checkUrlAttribute(
+  name: string,
+  value: string,
+  profile: ProfileDefinition,
+  baseUrl: string | undefined,
+): { allowed: true } | { allowed: false; reason: string } {
+  // srcset/imagesrcset hold many candidates, ping a whitespace-separated list:
+  // EVERY url must pass, or the whole attribute goes.
+  const candidates = name === "srcset" || name === "imagesrcset" ? parseSrcsetUrls(value) : name === "ping" ? splitOnWhitespace(value) : [value];
+  for (const candidate of candidates) {
+    const result = checkUrl(candidate, profile.urlSchemes, baseUrl);
+    if (!result.allowed) return { allowed: false, reason: `disallowed-url-scheme:${result.scheme}` };
+    if (profile.blockRelativeAutoLoadUrls && AUTO_LOAD_ATTRS.has(name) && result.scheme === "relative") {
+      return { allowed: false, reason: "relative-url-on-auto-load" };
+    }
+  }
+  return { allowed: true };
 }
 
 function snippet(value: string): string {
@@ -124,12 +228,7 @@ export interface EnforceResult {
  * Mutates `fragment` in place and returns the notes for the
  * `SanitizationReport`.
  */
-export function enforceProfile(
-  fragment: DocumentFragment,
-  profile: ProfileDefinition,
-  customElements: ReadonlyMap<string, CustomElementAllowlistEntry>,
-  options: EnforceOptions = {},
-): EnforceResult {
+export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefinition, options: EnforceOptions = {}): EnforceResult {
   const removedElements: SanitizationNote[] = [];
   const removedAttributes: SanitizationNote[] = [];
   const rewrittenUrls: SanitizationNote[] = [];
@@ -158,7 +257,7 @@ export function enforceProfile(
     }
 
     const builtinAttrs = profile.elements[tag];
-    const customEntry = profile.allowCustomElements && tag.includes("-") ? customElements.get(tag) : undefined;
+    const customEntry = tag.includes("-") ? matchCustomElement(profile, tag) : undefined;
     const allowedAttrs = builtinAttrs ?? customEntry?.attributes;
 
     if (allowedAttrs === undefined) {
@@ -208,10 +307,10 @@ export function enforceProfile(
         continue;
       }
 
-      if (profile.urlAttributes.includes(name)) {
-        const result = checkUrl(attr.value, profile.urlSchemes, options.baseUrl);
-        if (!result.allowed) {
-          rewrittenUrls.push({ tag, attribute: name, reason: `disallowed-url-scheme:${result.scheme}`, snippet: snippet(attr.value) });
+      if (URL_VALUED_ATTRS.has(name) || profile.urlAttributes.includes(name)) {
+        const verdict = checkUrlAttribute(name, attr.value, profile, options.baseUrl);
+        if (!verdict.allowed) {
+          rewrittenUrls.push({ tag, attribute: name, reason: verdict.reason, snippet: snippet(attr.value) });
           el.removeAttribute(attr.name);
         }
       }

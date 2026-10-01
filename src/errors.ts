@@ -52,6 +52,15 @@ export class SafeFragmentError extends Error {
   readonly code: SafeFragmentErrorCode;
   readonly details?: Record<string, unknown>;
 
+  /**
+   * `instanceof SafeFragmentError` must hold across the ESM and CJS builds of
+   * this package (and across realms): each build defines its own class, so
+   * the default prototype-chain check would say "no". Duck-typed instead.
+   */
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return isSafeFragmentError(value);
+  }
+
   constructor(code: SafeFragmentErrorCode, message: string, options: SafeFragmentErrorOptions = {}) {
     super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
     this.name = "SafeFragmentError";
