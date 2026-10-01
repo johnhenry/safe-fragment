@@ -16,14 +16,25 @@ const title = native
   ? "cross-engine equivalence: native Sanitizer API vs DOMPurify produce the same DOM"
   : "cross-engine equivalence [SKIPPED: this browser has no native Sanitizer API (Element.setHTML), so DOMPurify is the only engine and there is nothing to compare]";
 
+const browserName = navigator.userAgent.includes("Firefox") ? "firefox" : navigator.userAgent.includes("Chrome") ? "chromium" : "webkit";
+
 const cases = [
-  ...XSS_CORPUS.map((f) => ({ source: "xss", name: f.name, profile: f.profile, input: f.input })),
-  ...BENIGN_CORPUS.filter((f) => getProfile(f.profile)?.mode === "html").map((f) => ({ source: "benign", name: f.name, profile: f.profile, input: f.input })),
+  ...XSS_CORPUS.map((f) => ({ source: "xss", name: f.name, profile: f.profile, input: f.input, divergence: f.knownDivergence })),
+  ...BENIGN_CORPUS.filter((f) => getProfile(f.profile)?.mode === "html").map((f) => ({
+    source: "benign",
+    name: f.name,
+    profile: f.profile,
+    input: f.input,
+    divergence: undefined as undefined | { browsers: string[]; reason: string },
+  })),
 ];
 
 suite(title, () => {
   for (const c of cases) {
-    it(`[${c.source}] ${c.name}`, async () => {
+    const exempt = c.divergence?.browsers.includes(browserName) ?? false;
+    // An exemption is visible in the test title with its reason, never silent.
+    const title = exempt ? `[${c.source}] ${c.name} [SKIPPED on ${browserName}: known divergence: ${c.divergence!.reason}]` : `[${c.source}] ${c.name}`;
+    it.skipIf(exempt)(title, async () => {
       const profile = getProfile(c.profile)!;
       const a = await sanitize(document, c.input, profile, { forceEngine: "native" });
       const b = await sanitize(document, c.input, profile, { forceEngine: "dompurify" });

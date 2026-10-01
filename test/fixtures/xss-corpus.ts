@@ -21,6 +21,13 @@ export interface XssFixture {
   forbiddenSubstrings: string[];
   /** Attributes that, if the selector matches an element in the output, must be absent from it. */
   forbiddenAttributes?: ForbiddenAttribute[];
+  /**
+   * A documented, understood cross-engine difference: the named browsers are
+   * exempt from the native-vs-DOMPurify equality check for this fixture (each
+   * engine's output is still checked against the forbidden/survives lists).
+   * Never use this to hide an unexplained difference.
+   */
+  knownDivergence?: { browsers: Array<"firefox" | "webkit" | "chromium">; reason: string };
   /** Benign text that must STILL be in the output's textContent (a sanitizer that deletes everything must not pass). */
   survives?: string[];
 }
@@ -152,6 +159,11 @@ export const XSS_CORPUS: XssFixture[] = [
   },
   {
     name: "noscript/title parser-confusion (mXSS-style)",
+    knownDivergence: {
+      browsers: ["firefox"],
+      reason:
+        "Firefox's native setHTML parses with the scripting flag ENABLED, so <noscript> content is raw text that ends at the first </noscript> (inside the attribute value) and the tail is parsed as markup; DOMPurify's DOMParser document parses with scripting DISABLED, so noscript holds elements and its whole subtree is dropped. Both outputs are fully enforced and pass the forbidden-substring check.",
+    },
     profile: "article-v1",
     input: '<noscript><p title="</noscript><img src=x onerror=alert(1)>">x</p></noscript>',
     forbiddenSubstrings: ["onerror", "<noscript"],
