@@ -1,0 +1,13 @@
+{
+  "name": "@johnhenry/safe-fragment",
+  "version": "0.0.0",
+  "license": "MIT",
+  "exports": "./src/index.ts",
+  "imports": {
+    "dompurify": "npm:dompurify@3.4.16"
+  },
+  "publish": {
+    "include": ["src/**/*.ts", "README.md", "LICENSE", "CHANGELOG.md", "jsr.json"],
+    "exclude": ["test", "examples", "dist", "docs", "scripts"]
+  }
+}

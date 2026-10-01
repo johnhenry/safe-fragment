@@ -24,7 +24,7 @@ jobs:
     # The reusable workflow runs ONLY the gate-commands below (it has no gate of
     # its own) and then `npm publish`. Keep this list identical to ci.yml's: the
     # publish gate must be the full suite (lint, typecheck, build, all three
-    # browsers via `npm test`, test:dist, examples, pack).
+    # browsers via `npm test`, test:dist, examples, pack, size budget, JSR dry run).
     uses: johnhenry/workflows/.github/workflows/npm-publish.yml@v1
     with:
       node-version: "26"
@@ -37,4 +37,6 @@ jobs:
         npm run test:dist
         npm run examples
         npm pack --dry-run
+        npm run size
+        npx --yes jsr publish --dry-run --allow-dirty
     secrets: inherit

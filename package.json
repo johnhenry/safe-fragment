@@ -38,7 +38,7 @@
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/append-dts.mjs",
     "prepare": "node scripts/prepare.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
@@ -51,7 +51,8 @@
     "fuzz": "node scripts/fuzz.mjs",
     "examples": "npm run build && vitest run --config vitest.examples.config.ts",
     "prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "test:dist": "npm run build && vitest run --config vitest.dist.config.ts"
+    "test:dist": "npm run build && vitest run --config vitest.dist.config.ts",
+    "size": "node scripts/check-size.mjs"
   },
   "keywords": [
     "web-components",

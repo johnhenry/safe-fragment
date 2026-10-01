@@ -20,3 +20,5 @@ jobs:
         npm run test:dist
         npm run examples
         npm pack --dry-run
+        npm run size
+        npx --yes jsr publish --dry-run --allow-dirty

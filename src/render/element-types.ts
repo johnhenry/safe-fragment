@@ -23,7 +23,14 @@ export interface SafeFragmentEventMap {
   "safe-fragment:disabled": CustomEvent<null>;
 }
 
-/** The public surface of a `<safe-fragment>` element. */
+/**
+ * The public surface of a `<safe-fragment>` element.
+ *
+ * The npm build's `index.d.ts`/`index.d.cts` also augment `HTMLElementTagNameMap`
+ * (`document.createElement("safe-fragment")` is typed); `scripts/append-dts.mjs` appends that
+ * block after the build. It is not in the source because JSR refuses global
+ * augmentations ("slow types").
+ */
 export interface SafeFragmentElement extends HTMLElement {
   /** HTML-like markup source. `undefined` behaves like `null`; a non-string is rejected with `INVALID_SOURCE` at render time. */
   html: string | null;
@@ -63,10 +70,4 @@ export interface SafeFragmentElement extends HTMLElement {
     options?: boolean | EventListenerOptions,
   ): void;
   removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
-}
-
-declare global {
-  interface HTMLElementTagNameMap {
-    "safe-fragment": SafeFragmentElement;
-  }
 }
