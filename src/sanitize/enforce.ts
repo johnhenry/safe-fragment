@@ -9,13 +9,12 @@ const DROP_SUBTREE: ReadonlySet<string> = new Set(DROP_SUBTREE_ELEMENTS);
 
 /**
  * Attribute names that are never permitted on any element, regardless of
- * what a profile (built-in or application-registered via `defineProfile`)
- * lists. This is a hard backstop, not the primary defense -- no shipped
- * profile lists any of these -- but `defineProfile` lets an application
- * register its own custom-element attribute list, and a typo or copy-paste
- * mistake there (e.g. accidentally including `"onclick"`) must not become
- * exploitable. Checked case-insensitively; `on*`-prefixed names are
- * rejected as a whole class, not enumerated.
+ * what a profile lists. This is a hard backstop, not the primary defense --
+ * no shipped profile lists any of these, and `registerProfile` refuses to
+ * register a profile that does -- but a typo or copy-paste mistake in an
+ * application's custom-element attribute list (e.g. accidentally including
+ * `"onclick"`) must not become exploitable. Checked case-insensitively;
+ * `on*`-prefixed names are rejected as a whole class, not enumerated.
  */
 const HARD_DENYLIST_ATTRS = new Set(["formaction", "srcdoc", "action", "xlink:href"]);
 

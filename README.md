@@ -12,6 +12,8 @@ versioned security profile -- an allowlist of elements, attributes, and
 URL schemes, sanitized through the native
 [HTML Sanitizer API](https://developer.mozilla.org/en-US/docs/Web/API/HTML_Sanitizer_API)
 or a locked-down [DOMPurify](https://github.com/cure53/DOMPurify) fallback.
+The same pipeline is available without the element as
+`sanitizeToFragment()`.
 
 This is **not** a generic `<inner-html>` wrapper. `<safe-fragment>` never
 assigns untrusted strings through `innerHTML`, `outerHTML`,
@@ -28,105 +30,71 @@ see [Security model](#security-model) below.
 
 ## Contents
 
-- [Security model](#security-model)
 - [Install](#install)
+  - [No bundler / import map](#no-bundler--import-map)
 - [Quick start](#quick-start)
 - [Try it live](#try-it-live)
 - [`<safe-fragment>` API](#safe-fragment-api)
 - [Profiles](#profiles)
+- [Sanitizing without the element](#sanitizing-without-the-element)
 - [The `src` remote-fetch capability](#the-src-remote-fetch-capability)
 - [`<example-sandbox>`](#example-sandbox)
 - [Error codes](#error-codes)
 - [Known limitations](#known-limitations)
 - [What still needs human review](#what-still-needs-human-review)
+- [Security model](#security-model)
 - [Family](#family)
 - [License](#license)
-
-## Security model
-
-**What safe-fragment guarantees:**
-
-- **Untrusted strings never reach an unsafe DOM sink.** `innerHTML`,
-  `outerHTML`, `insertAdjacentHTML`, `setHTMLUnsafe` (and equivalents) are
-  never called with unsanitized input anywhere in this codebase --
-  parsing and allowlist enforcement always happen together, before
-  anything touches a live document. See
-  [ADR 0001](docs/adr/0001-html-as-data-not-code.md).
-- **Every render goes through a closed, versioned allowlist**, not a
-  denylist. An element or attribute not explicitly listed in the active
-  profile is removed -- dangerous containers with their whole subtree, other
-  disallowed elements unwrapped (ADR 0004) -- never "escaped and left in place."
-- **URL-scheme filtering uses the platform `URL` parser, never regex.**
-  `javascript:`, `data:`, `vbscript:`, and `file:` URLs are rejected
-  under every shipped profile, including whitespace/entity/case-obfuscated
-  variants -- see `src/policy/url.ts` and the adversarial corpus in
-  `test/security/`.
-- **Two independent sanitization engines converge on the same allowlist.**
-  The native Sanitizer API (when available) or a locked-down DOMPurify
-  fallback do the initial parse; a shared, hand-written `enforceProfile()`
-  pass then re-derives and enforces the exact allowed set from the
-  profile, identically regardless of which engine ran. See
-  [ADR 0002](docs/adr/0002-native-sanitizer-with-dompurify-fallback.md).
-- **`on*` event-handler attributes are always stripped**, even if a
-  profile or an application's custom-element registration mistakenly
-  allowlists one -- a hardcoded backstop, not the primary defense.
-- **`target="_blank"` anchors always get `rel="noopener noreferrer"`
-  forced**, closing the reverse-tabnabbing hole regardless of source
-  markup.
-- **No "unsafe"/"trusted"/"allowScripts" escape hatch exists anywhere in
-  this public API.** There is no flag that turns sanitization off for a
-  particular render.
-- **Importing this package never touches `window`/`document`/
-  `HTMLElement`/`customElements`.** Nothing renders and no custom element
-  is defined until an application explicitly calls `registerSafeFragment()`
-  from code that actually runs in a browser -- safe to `import` in
-  Node/SSR.
-- **The `src` remote-fetch source is disabled by default**, GET-only,
-  same-origin unless an application explicitly allowlists other origins,
-  size-capped, and supersession-safe (an older in-flight fetch can never
-  overwrite a newer render's output).
-
-**What is still yours:**
-
-- **Choosing the right profile.** Rendering attacker-controlled content
-  under `ui-v1` (which allows `class`, `data-*`, and app-registered custom
-  elements) when `article-v1` or `plain-text-v1` would do is a choice this
-  library cannot make for you.
-- **What your own custom elements do.** `defineProfile("ui-v1", {
-customElements: [...] })` lets your registered custom elements receive
-  sanitized attribute values; what your custom element's own
-  `attributeChangedCallback` (or anything else) does with them is your
-  code, not this library's.
-- **`<example-sandbox>`'s executable code is never sanitized, and is not
-  meant to be.** It is a _separate_ component for running
-  application-authored, trusted code samples in an isolated iframe -- see
-  [`<example-sandbox>`](#example-sandbox). Feeding it untrusted user input
-  is a misuse of the component, not a bypass of `<safe-fragment>`.
-- **Shadow DOM (`scope="shadow"`) is a styling convenience, not an
-  isolation boundary.** See
-  [ADR 0003](docs/adr/0003-shadow-dom-is-not-sandboxing.md) -- do not rely
-  on it for anything a real sandbox would need to guarantee.
-- **CSS-based and content-level risks this library cannot see.** See
-  [docs/security-model.md](docs/security-model.md) "What this package
-  does not protect against" for the full list (phishing via a
-  syntactically-valid link, `class`-based selector targeting in `ui-v1`,
-  parse-time cost of very large strings passed directly to `.html`).
-
-Full detail: [docs/security-model.md](docs/security-model.md).
 
 ## Install
 
 ```bash
-npm install @johnhenry/safe-fragment dompurify
+npm install @johnhenry/safe-fragment
 ```
 
-`dompurify` is a peer of the sanitization fallback path and is already a
-normal `dependencies` entry of this package (npm will install it
-automatically) -- listed here for clarity, not because you need to
-install it separately.
+**Provenance.** A new package: never published under any other name, and
+`0.0.0` is the unreleased development version (there is nothing on npm yet),
+so there is no earlier name or version to migrate from.
 
-Requires Node >=26 for the toolchain (build/test); the shipped ESM/CJS
-output targets evergreen browsers.
+`dompurify` (pinned to an exact version) is a normal dependency, installed
+automatically; it is loaded lazily, only on browsers without
+`Element.setHTML` (Safari today) or when you force the fallback. The shipped
+ESM/CJS output targets evergreen browsers; Node >= 26 is only the toolchain
+(`devEngines`). Importing the package in Node/SSR is safe: nothing touches
+the DOM until you call a `register*` function.
+
+### No bundler / import map
+
+The fallback engine does `import("dompurify")`, a bare specifier. With a
+bundler it just resolves. With none (a static page, `<script type="module">`),
+either map it:
+
+```html
+<script type="importmap">
+  { "imports": { "dompurify": "https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.es.mjs" } }
+</script>
+```
+
+or hand safe-fragment the factory yourself:
+
+```js
+registerSafeFragment({
+  loadDOMPurify: () => import("https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.es.mjs").then((m) => m.default),
+});
+```
+
+If neither is in place and the browser needs the fallback, rendering rejects
+with `SANITIZER_UNAVAILABLE`, whose message says exactly this. Call
+`await preloadSanitizer()` at startup to pay the load once and surface the
+problem early (it resolves `"native"` without loading anything where
+`setHTML` exists, and is what makes the synchronous API usable on Safari).
+
+**With [mport](https://github.com/johnhenry/mport):** on raw-file CDNs
+(jsDelivr, unpkg) the import map only contains entry points you ask for, so
+list `dompurify` explicitly:
+`npx @johnhenry/mport build @johnhenry/safe-fragment@0 dompurify@3.4.16`.
+Use the exact version this release pins. The `examples/` pages each carry an
+import map for it.
 
 ## Quick start
 
@@ -162,51 +130,70 @@ read):
 ## Try it live
 
 ```sh
-npm run build && npx http-server . -p 4995
+npm run build && npx serve .
 ```
 
-Then open **`examples/playground/`** -- type or paste HTML, or click a real
-attack from the test corpus (img `onerror`, `javascript:` links, `svg
-onload`, formaction hijacking). One box renders it completely
-unprotected (literal `innerHTML` in a sandboxed iframe -- if something
-fires, you'll see it happen); the other renders the same input through
-`<safe-fragment>`. A second tab demos the `ui-v1` "content requests, host
-decides" action protocol with a live application log.
+Then open **`/examples/04-playground/`** -- type or paste HTML, or click a
+real attack from the test corpus (img `onerror`, `javascript:` links, `svg
+onload`, formaction hijacking). One box renders it completely unprotected
+(literal `innerHTML` in a sandboxed iframe -- if something fires, you'll see
+it happen); the other renders the same input through `<safe-fragment>`. A
+second tab demos the `ui-v1` "content requests, host decides" action
+protocol with a live application log.
 
-The other three examples (`article-viewer/`, `ui-protocol-demo/`,
-`sandbox-playground/`) are smaller, single-scenario versions of the same
-ideas, each also exercised directly by
-`test/examples/examples-smoke.test.ts`. `npx serve .` also works for any
-of them, but needs a `serve.json` with `cleanUrls: false` in the repo root
-(already present) -- `serve`'s default URL rewriting otherwise breaks the
-examples' relative `./main.mjs` imports.
+The other three examples are smaller, single-scenario versions of the same
+ideas, each also exercised by `test/examples/examples-smoke.test.ts`; see
+[`examples/README.md`](examples/README.md) for what each demonstrates.
+`serve` needs the repo's `serve.json` (`cleanUrls: false`, already present),
+or its URL rewriting breaks the examples' relative `./main.mjs` imports.
 
 ## `<safe-fragment>` API
 
 ### Attributes / properties
 
-| Attribute     | Property      | Notes                                                                                                                                |
-| ------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `profile`     | `.profile`    | Required. Name of a registered profile (`plain-text-v1`, `article-v1`, `ui-v1`, `email-v1`, or an application-registered one).       |
-| --            | `.html`       | Highest-precedence markup source. Setting it schedules a render.                                                                     |
-| `src`         | `.source`     | URL to fetch markup from. Disabled by default -- see [below](#the-src-remote-fetch-capability).                                      |
-| `content`     | --            | Legacy, lowest-precedence source. Emits a `console.warn` when used.                                                                  |
-| `render-mode` | `.renderMode` | `"replace"` (default) \| `"once"` \| `"manual"`.                                                                                     |
-| `scope`       | `.scope`      | `"light"` (default) \| `"shadow"`. See [ADR 0003](docs/adr/0003-shadow-dom-is-not-sandboxing.md).                                    |
-| `loading`     | `.loading`    | `"eager"` (default) \| `"lazy"` -- defers a `src` fetch until the element intersects the viewport.                                   |
-| `disabled`    | `.disabled`   | Clears and suspends rendering.                                                                                                       |
-| `strict`      | `.strict`     | When present, more than one simultaneous markup source is an `AMBIGUOUS_SOURCE` rejection instead of silently picking by precedence. |
-| `debug`       | `.debug`      | `console.warn`s the code/message of every `reject` event.                                                                            |
+Every attribute has a property and every property reflects its attribute.
+Enumerated values are matched case-insensitively. Properties set before the
+element was upgraded (frameworks, scripts that ran before
+`registerSafeFragment()`) are replayed through the setters on first connect.
+
+| Attribute     | Property      | Notes                                                                                                                                                                  |
+| ------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `profile`     | `.profile`    | Required. Name of a registered profile (`plain-text-v1`, `article-v1`, `ui-v1`, `email-v1`, or one you registered). There is no default.                               |
+| --            | `.html`       | Highest-precedence markup source. `undefined` behaves like `null`; a non-string is rejected with `INVALID_SOURCE`. Setting it schedules a render.                      |
+| `src`         | `.source`     | URL to fetch markup from. Disabled by default -- see [below](#the-src-remote-fetch-capability).                                                                        |
+| `content`     | --            | Legacy, lowest-precedence source. Emits a `console.warn` when used.                                                                                                    |
+| `render-mode` | `.renderMode` | `"replace"` (default) \| `"once"` \| `"manual"`. `clear()` and disabling reset `once`, so a later change renders again.                                                |
+| `scope`       | `.scope`      | `"light"` (default) \| `"shadow"`. Switching scope removes the stale wrapper. See [ADR 0003](docs/adr/0003-shadow-dom-is-not-sandboxing.md).                           |
+| `loading`     | `.loading`    | `"eager"` (default) \| `"lazy"` -- defers a `src` fetch until the element intersects the viewport. A changed `src` goes back through the gate; a reconnect re-arms it. |
+| `disabled`    | `.disabled`   | Clears the content, cancels any in-flight render and suspends rendering.                                                                                               |
+| `strict`      | `.strict`     | When present, more than one simultaneous markup source is an `AMBIGUOUS_SOURCE` rejection instead of silently picking by precedence.                                   |
+| `debug`       | `.debug`      | `console.warn`s the code/message of every `reject` event.                                                                                                              |
+| --            | `.sourceKind` | Read-only: which source `render()` would use now (`html-property`, `template-child`, `src`, `content-attribute`, `none`, `ambiguous`).                                 |
 
 **Source precedence** (highest first): `.html` property > `<template>`
-child > `src` > legacy `content` attribute.
+child > `src` > legacy `content` attribute. Edits to a `<template>` source
+child (its content, or the template being added, removed or replaced) are
+observed and re-render, subject to `render-mode`.
 
 ### Methods
 
-- `render(): Promise<void>` -- explicit render. Works even in `render-mode="manual"`.
-- `refresh(): Promise<void>` -- alias of `render()`; the documented way to force a re-render in `render-mode="once"`.
-- `clear(): void` -- empties the rendered root and aborts any in-flight fetch.
-- `getRenderedRoot(): Node | null` -- the element actually holding rendered content (a dedicated wrapper, not the host element itself and not the shadow root directly).
+- `render(): Promise<RenderResult>` -- explicit render, works in `render-mode="manual"`, and supersedes a queued automatic render. Never rejects; resolves with `{ status, error?, report? }`:
+  - `rendered` -- the sanitized content is in the DOM; `report` is the `SanitizationReport`.
+  - `rejected` -- nothing was rendered; `error` is a `SafeFragmentError` and a `safe-fragment:reject` event fired. **Previously rendered content is cleared** (so content never stays on screen under a profile or source the element no longer claims), except when a `before-render` listener vetoed the render (`RENDER_ABORTED`), which leaves it alone.
+  - `superseded` -- a newer render, `clear()`, disabling or a disconnect overtook it; `error` is `FETCH_SUPERSEDED`/`FETCH_ABORTED` when a fetch was cut short. No event fires.
+  - `disabled` -- the element is disabled (`error.code === "DISABLED"`, also dispatched as `reject`).
+- `refresh(): Promise<RenderResult>` -- an alias of `render()`, kept because it reads better where you re-fetch a `src`; identical behavior, including in `render-mode="once"`.
+- `clear(): void` -- empties the rendered root, cancels any in-flight render (nothing already started can land afterwards) and resets `once` mode.
+- `getRenderedRoot(): Element | null` -- the wrapper element holding the rendered content (a dedicated child, not the host itself and not the shadow root).
+
+**Lifecycle.** Moving an element within the DOM (or re-attaching it) does not
+re-render or refetch when its source, profile and scope are unchanged. An
+element moved to another document (a pop-out window) re-arms its observers
+against the new window. `src` fetches and `IntersectionObserver`s are torn
+down on disconnect and when the element's own window fires `pagehide` (removing an
+`<iframe>` does not run `disconnectedCallback` for what is inside it).
+`before-render` fires once a render actually starts with a valid source and
+profile (never for `NO_SOURCE`, `INVALID_SOURCE`, `UNKNOWN_PROFILE`, ...).
 
 ### Events
 
@@ -217,29 +204,76 @@ All events bubble and are namespaced `safe-fragment:*`:
 | `safe-fragment:before-render` | Yes        | `{ profile, sourceKind }` -- `preventDefault()` vetoes the render.                                                                                                 |
 | `safe-fragment:render`        | No         | `{ report: SanitizationReport, root: Node }`                                                                                                                       |
 | `safe-fragment:reject`        | No         | `{ code, message, details? }` -- see [Error codes](#error-codes).                                                                                                  |
-| `safe-fragment:action`        | No         | `{ action, element, originalEvent }` -- `ui-v1`'s `data-action` delegation.                                                                                        |
+| `safe-fragment:clear`         | No         | `{ reason: "clear" \| "disabled" \| "rejected" }` -- rendered content was removed.                                                                                 |
+| `safe-fragment:disabled`      | No         | -- the element was just disabled.                                                                                                                                  |
+| `safe-fragment:action`        | No         | `{ action, element, originalEvent }` -- `data-action` delegation (any profile that allows it, i.e. `ui-v1`). Works under `scope="shadow"` (via `composedPath()`).  |
 | `safe-fragment:link`          | No         | `{ href, target, element, originalEvent }` -- fires before a rendered `<a>` navigates; call `preventDefault()` on `originalEvent` to intercept (e.g. SPA routing). |
+
+### TypeScript
+
+The package ships types for the element: the `SafeFragmentElement` interface,
+a `SafeFragmentEventMap` so `el.addEventListener("safe-fragment:render", (e) => e.detail.report)`
+is typed, and an `HTMLElementTagNameMap` augmentation (`document.createElement("safe-fragment")`
+returns a `SafeFragmentElement` after `registerSafeFragment()`). The class itself is
+exported as `createSafeFragmentElementClass(HTMLElement, deps)` and
+`getSafeFragmentElementClass()`.
 
 ## Profiles
 
 Full detail: [docs/profiles.md](docs/profiles.md).
 
-| Profile         | Status                                                      | Summary                                                                                  |
-| --------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `plain-text-v1` | Fully implemented, tested                                   | No HTML parsing at all -- `textContent` only.                                            |
-| `article-v1`    | Fully implemented, tested                                   | Rich read-mostly content: prose, headings, lists, tables, links, images.                 |
-| `ui-v1`         | Fully implemented, tested                                   | Layout/interactive elements + app-registered custom elements + `data-action` delegation. |
-| `email-v1`      | **Scaffold** -- see [Known limitations](#known-limitations) | Restrictive table-layout-friendly subset; no `cid:`/VML/MSO-comment handling yet.        |
+| Profile         | Status                                                      | Summary                                                                                                                 |
+| --------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `plain-text-v1` | Fully implemented, tested                                   | No HTML parsing at all -- `textContent` only.                                                                           |
+| `article-v1`    | Fully implemented, tested                                   | Rich read-mostly content: prose, headings, lists, tables, links, images.                                                |
+| `ui-v1`         | Fully implemented, tested                                   | Layout/interactive elements, `data-action` delegation, forced `type="button"`. Derive a profile to add custom elements. |
+| `email-v1`      | **Scaffold** -- see [Known limitations](#known-limitations) | Restrictive table-layout-friendly subset; blocks relative auto-loading URLs; no `cid:`/VML/MSO-comment handling yet.    |
 
-Register a custom element for `ui-v1`:
+The built-ins are frozen and versioned (`name`, `version`); nothing mutates
+them. Register your own, or derive one from a built-in:
 
 ```ts
-import { defineProfile } from "@johnhenry/safe-fragment";
+import { registerProfile, deriveProfile } from "@johnhenry/safe-fragment";
 
-defineProfile("ui-v1", {
-  customElements: [{ tag: "rating-stars", attributes: ["value", "max"] }],
-});
+registerProfile(
+  deriveProfile("ui-v1", {
+    name: "my-ui-v1",
+    customElements: [
+      { tag: "rating-stars", attributes: ["value", "max"] },
+      { tag: "ui--*", attributes: ["role"] }, // prefix pattern: ui--card, ui--stat, ...
+    ],
+  }),
+);
+// <safe-fragment profile="my-ui-v1"> ...
 ```
+
+`registerProfile` validates (typed `INVALID_PROFILE`/`PROFILE_MISMATCH` errors:
+no dangerous elements, `on*`/`style` attributes, dangerous schemes, wildcard
+`data-*`, reserved custom-element names such as `font-face`);
+`unregisterProfile(name)` removes one you added. `PLAIN_TEXT_V1`, `ARTICLE_V1`,
+`UI_V1` and `EMAIL_V1` are exported **name strings** (use `getProfile(ARTICLE_V1)` for
+the definition).
+
+## Sanitizing without the element
+
+```ts
+import { sanitizeToFragment, sanitizeToFragmentSync, preloadSanitizer } from "@johnhenry/safe-fragment";
+
+const { fragment, report } = await sanitizeToFragment(untrustedHtml, { profile: "article-v1" });
+target.replaceChildren(fragment); // a detached, profile-conformant DocumentFragment
+
+await preloadSanitizer(); // once, at startup
+const sync = sanitizeToFragmentSync(untrustedHtml, { profile: "article-v1" });
+```
+
+Same pipeline, same guarantees, same `SanitizationReport`; options are
+`{ profile, document?, maxInputLength?, baseUrl?, loadDOMPurify? }`. The sync
+variant works only when the native engine exists or DOMPurify was already
+prepared; otherwise it throws `SANITIZER_NOT_READY` -- it fails closed. This is
+the entry point for template systems that need a sanitizer hook. The report
+lists what both the engine and `enforceProfile` removed
+(`removedElements`, `removedAttributes`, `rewrittenUrls`); `outputLength` is an
+approximation.
 
 ## The `src` remote-fetch capability
 
@@ -251,17 +285,21 @@ registerSafeFragment({
     enabled: true,
     allowedOrigins: ["https://cdn.example.com"], // same-origin is always allowed once enabled
     maxBytes: 250_000, // default
-    timeoutMs: 8_000, // default
+    timeoutMs: 8_000, // default; stays armed until the body is fully read
+    followRedirects: false, // default: redirects are refused (redirect: "error")
   },
+  maxInputLength: 1_000_000, // default; applies to every source, not just src
 });
 ```
 
 GET-only (not configurable), size-capped during streaming (not just via a
-`Content-Length` header, which can lie or be absent), and
-supersession-safe: `render()`-token-checked plus its own `AbortController`,
-aborted on every subsequent `render()` call, so a slow, stale fetch can
-never overwrite a newer render's output. See
-`src/source/fetch.ts` and `test/integration/fetch-source.test.ts`.
+`Content-Length` header, which can lie or be absent), and never lets a stale
+fetch overwrite a newer render: each render has its own `AbortController` and
+token, the previous one is aborted when a new render starts, and every `await`
+re-checks both. With `followRedirects: true` the final `response.url` is
+re-validated against the same-origin/`allowedOrigins` policy
+(`FETCH_REDIRECT_NOT_ALLOWED` otherwise). See `src/source/fetch.ts` and
+`test/integration/fetch-source.test.ts`.
 
 ## `<example-sandbox>`
 
@@ -290,128 +328,214 @@ safety claim about the code it runs** -- see
 [ADR 0001](docs/adr/0001-html-as-data-not-code.md) and the module doc
 comment in `src/sandbox/example-sandbox-element.ts`.
 
+Under a CSP with `require-trusted-types-for 'script'`, add the policy name
+`safe-fragment-sandbox` (configurable: `registerExampleSandbox({ trustedTypesPolicyName })`)
+to `trusted-types`. The component creates that policy only to set the sandbox
+document and compile the code sample, both application-authored; if the name
+is not allowed, you get an `example-sandbox:error` event and no iframe.
+
 ## Error codes
 
-`SafeFragmentError#code` (also `reject` event `detail.code`) is a stable
-string enum -- switch on it, not on `.message`. Full list in
-`src/errors.ts`: `AMBIGUOUS_SOURCE`, `NO_SOURCE`, `PARSE_FAILED`,
-`UNKNOWN_PROFILE`, `PROFILE_MISMATCH`, `SANITIZE_FAILED`,
-`SANITIZER_UNAVAILABLE`, `FETCH_DISABLED`, `FETCH_ORIGIN_NOT_ALLOWED`,
-`FETCH_METHOD_NOT_ALLOWED`, `FETCH_SIZE_EXCEEDED`, `FETCH_TIMEOUT`,
-`FETCH_ABORTED`, `FETCH_FAILED`, `FETCH_NON_2XX`, `FETCH_SUPERSEDED`,
-`DISABLED`, `UNSUPPORTED_ENVIRONMENT`, `RENDER_ABORTED`.
+`SafeFragmentError#code` (also `reject` event `detail.code`, and
+`RenderResult#error.code`) is a stable string enum -- switch on it, not on
+`.message`. `instanceof SafeFragmentError` also holds across the ESM and CJS
+builds.
+
+| Code                         | Surfaces as                      | Meaning                                                                          |
+| ---------------------------- | -------------------------------- | -------------------------------------------------------------------------------- |
+| `AMBIGUOUS_SOURCE`           | `reject`                         | More than one markup source while `strict`.                                      |
+| `NO_SOURCE`                  | `reject`                         | No `.html`, `<template>`, `src` or `content`.                                    |
+| `INVALID_SOURCE`             | `reject`, throw                  | The source is not a string.                                                      |
+| `SOURCE_TOO_LARGE`           | `reject`, throw                  | The source exceeds `maxInputLength`.                                             |
+| `UNKNOWN_PROFILE`            | `reject`, throw                  | The profile is missing or not registered.                                        |
+| `PROFILE_MISMATCH`           | throw (`registerProfile`)        | A `-vN` name suffix disagrees with `version`.                                    |
+| `INVALID_PROFILE`            | throw                            | A profile definition or `registerProfile`/`deriveProfile` arguments are invalid. |
+| `SANITIZE_FAILED`            | `reject`, throw                  | The engine threw while sanitizing.                                               |
+| `SANITIZER_UNAVAILABLE`      | `reject`, throw                  | DOMPurify is needed but cannot be loaded (the message says how to fix it).       |
+| `SANITIZER_NOT_READY`        | throw (`sanitizeToFragmentSync`) | No engine is ready synchronously; call `preloadSanitizer()`.                     |
+| `FETCH_DISABLED`             | `reject`                         | `src` used without enabling the fetch capability.                                |
+| `FETCH_ORIGIN_NOT_ALLOWED`   | `reject`                         | The URL's origin is neither the page's nor in `allowedOrigins`.                  |
+| `FETCH_REDIRECT_NOT_ALLOWED` | `reject`                         | With `followRedirects`, the final origin is not allowed.                         |
+| `FETCH_SIZE_EXCEEDED`        | `reject`                         | The body exceeds `maxBytes` (header or streamed).                                |
+| `FETCH_TIMEOUT`              | `reject`                         | The fetch, including reading the body, exceeded `timeoutMs`.                     |
+| `FETCH_FAILED`               | `reject`                         | Network failure (including mid-stream, and a refused redirect).                  |
+| `FETCH_NON_2XX`              | `reject`                         | The response was not ok.                                                         |
+| `FETCH_SUPERSEDED`           | `render()` result only           | A newer render overtook the fetch. No event.                                     |
+| `FETCH_ABORTED`              | `render()` result only           | `clear()`, disabling, disconnecting or page hide cut the fetch short. No event.  |
+| `DISABLED`                   | `reject`, `render()` result      | `render()` was called on a disabled element.                                     |
+| `RENDER_ABORTED`             | `reject`, `render()` result      | A `before-render` listener cancelled the render.                                 |
+| `UNSUPPORTED_ENVIRONMENT`    | throw                            | A `register*`/`sanitizeToFragment` call without a DOM.                           |
 
 ## Known limitations
 
-Honest accounting of solid vs. scaffolded, per the build's stated
-priority order:
+Solid -- implemented and covered by the Vitest Browser Mode suite (real
+Chromium, WebKit and Firefox; the Firefox run is CI-only because it cannot
+launch in the maintainer's sandbox), including the adversarial XSS corpus and
+a benign-content corpus compared across both sanitization engines:
 
-**Solid -- implemented and covered by the real (Vitest Browser Mode +
-Playwright Chromium) test suite, including the adversarial XSS corpus
-against both sanitization engines:**
+- The sanitizer pipeline (both engines, `enforceProfile`, rebuild), the report, and the public `sanitizeToFragment` API.
+- `plain-text-v1`, `article-v1`, `ui-v1`; custom profiles via `registerProfile`.
+- `<safe-fragment>`'s lifecycle, `render()` results, events, shadow/light scope, `loading="lazy"`.
+- The `src` fetch capability model.
+- `<example-sandbox>`, including a direct isolation-proof test and Trusted Types support.
 
-- Core sanitizer pipeline (`enforceProfile` + both engines).
-- `plain-text-v1`, `article-v1`, `ui-v1` profiles.
-- `<safe-fragment>`'s full lifecycle: source precedence, `strict` mode,
-  render modes, microtask coalescing, render-token supersession, light/
-  shadow scope, all five events, `data-action`/link delegation.
-- The `src` fetch capability model (disabled-by-default, origin allowlist,
-  size cap including streamed bodies, timeout, supersession).
-- `<example-sandbox>`, including a direct isolation-proof test
-  (`parent.document` access throws inside the sandbox).
+Known gaps (each has an issue):
 
-**Scaffolded / explicitly incomplete:**
-
-- **`email-v1`** is a thin starting point, not hardened against real-world
-  HTML email quirks (`cid:` URLs, Outlook VML, MSO conditional comments) --
-  see `src/profiles/email-v1.ts` and docs/profiles.md.
-- **No public API to register an entirely new named profile** -- only
-  `defineProfile()` for extending `ui-v1`'s custom-element allowlist.
-  Applications needing a different allowlist today must compose against
-  `ProfileDefinition` directly (`src/policy/profile.ts`) and call
-  `sanitize()` themselves rather than going through `<safe-fragment
-profile="...">`.
-- **No SVG/MathML support in any profile.** Excluded entirely for v1 given
-  how much of the classic XSS-bypass literature specifically targets
-  those namespaces (`<svg onload>`, `xlink:href` abuse) -- a future,
-  carefully-scoped `svg-safe-v1` is out of scope for this build.
-- **`loading="lazy"`** uses `IntersectionObserver` when available and
-  falls back to eager rendering when it isn't (rather than never
-  rendering) -- not independently stress-tested beyond the unit-level
-  behavior.
-- Examples (`examples/`) are runnable, not a full documentation site --
-  four scenarios (an interactive playground, plus single-scenario article
-  viewer / `ui-v1` protocol demo / sandbox playground versions of the same
-  ideas). See [Try it live](#try-it-live).
-- **`SanitizationReport` only records what `enforceProfile()` itself
-  removed, not what the underlying sanitizer engine (native Sanitizer API
-  / DOMPurify) already stripped as its own baseline defense before
-  `enforceProfile` ever sees the DOM.** For a compound payload (e.g. an
-  `onerror` handler alongside a profile-disallowed element), the report
-  can under-count real removals -- the dangerous attribute is genuinely
-  gone from the output, but `removedAttributes` won't mention it. Found
-  while building `examples/playground/`'s live report panel, which
-  surfaces this explicitly rather than hiding it. Attributing engine-level
-  removals to the report would need a before/after DOM diff around the
-  engine call and hasn't been done -- flagged for review, not fixed here.
+- **No independent security review yet** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)). Do not release or rely on this for hostile content before it.
+- **`email-v1` is a scaffold**: `cid:`, Outlook VML and MSO conditional comments are unhandled, and it has no email-specific corpus ([safe-fragment#2](https://github.com/johnhenry/safe-fragment/issues/2)).
+- **No SVG/MathML in any profile** ([safe-fragment#3](https://github.com/johnhenry/safe-fragment/issues/3)).
+- **The native Sanitizer API spec is still moving**; only Chromium (and, per CI, Firefox) ship `setHTML`, and Safari takes the DOMPurify path ([safe-fragment#4](https://github.com/johnhenry/safe-fragment/issues/4)).
+- **DOMPurify's cost is quadratic in removed nodes**: `maxInputLength` bounds it, it does not remove it ([safe-fragment#5](https://github.com/johnhenry/safe-fragment/issues/5)).
+- **`article-v1`/`ui-v1` keep relative `img src`**, a same-origin GET on render; opt in to `blockRelativeAutoLoadUrls` ([safe-fragment#6](https://github.com/johnhenry/safe-fragment/issues/6)).
+- **`ui-v1` allows `class`**, which can match host selectors ([safe-fragment#7](https://github.com/johnhenry/safe-fragment/issues/7)).
+- **The native path's report cannot count the engine's own baseline removals under Trusted Types** ([safe-fragment#8](https://github.com/johnhenry/safe-fragment/issues/8)); on DOMPurify it is complete.
+- `loading="lazy"` falls back to eager rendering when `IntersectionObserver` is missing (rather than never rendering).
+- `FETCH_ABORTED`/`FETCH_SUPERSEDED` are reported through `render()`'s result only, never as events: an abort you caused is not a failure.
 
 ## What still needs human review
 
-This was built end-to-end by an AI agent against a detailed specification
-and passes its own test suite, but has **not** had independent human
-security review. Before trusting this with real, adversarial user content:
+This was built end-to-end by AI agents against specifications and audits, and
+passes its own test suite, but has **not** had independent human security
+review ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)). Before trusting this with real, adversarial user content:
 
-- **Independent review of `src/sanitize/enforce.ts` and
-  `src/policy/url.ts`** -- these two files are the actual security
-  boundary; everything else is defense-in-depth around them.
-- **A wider adversarial corpus.** `test/security/fixtures/xss-corpus.ts`
-  covers the classes of attack named in the original spec (img/onerror,
-  javascript: URLs, svg/onload, MathML xlink:href, obfuscated protocols,
-  formaction, srcdoc, parser-confusion, inline style, custom-element
-  abuse) but is not exhaustive -- a professional fuzzing pass or a known
-  XSS cheat-sheet (e.g. OWASP's) cross-check would materially increase
-  confidence.
-- **Native Sanitizer API config correctness across real browsers.** This
-  was verified in headless Chromium (which does support `Element#setHTML`
-  as of the version bundled with the Playwright release used to build
-  this); Safari/Firefox support and any behavioral differences in the
-  native path have not been checked.
-- **DOMPurify version pinning and update policy.** `dompurify` is a real,
-  un-pinned (`^`) dependency; a supply-chain or regression review of the
-  update policy is a reasonable pre-production step.
-- **Load-bearing review of the `enforceProfile` hard-denylist** (`on*`,
-  `formaction`, `srcdoc`, `action`, `xlink:href`) for completeness against
-  attribute-based attack vectors this build's author may not have
-  considered.
-- **The `email-v1` scaffold**, before it is used for anything beyond a
-  starting point.
+- **Independent review of `src/sanitize/enforce.ts`, `src/sanitize/rebuild.ts` and `src/policy/url.ts`** -- the actual security boundary; everything else is defense-in-depth around them. Also `src/policy/registry.ts` validation of custom profiles.
+- **A wider adversarial corpus.** `test/fixtures/xss-corpus.ts` covers the classes of attack named in the original spec (img/onerror, `javascript:` URLs, svg/onload, MathML `xlink:href`, obfuscated protocols, formaction, srcdoc, parser-confusion, inline style, custom-element abuse) plus clobbering, tabnabbing and srcset cases in their own suites, but is not exhaustive: an OWASP cheat-sheet cross-check and mXSS fuzzing against both engines would materially increase confidence.
+- **Native Sanitizer API behavior per browser release** ([safe-fragment#4](https://github.com/johnhenry/safe-fragment/issues/4)). Verified in Chromium and WebKit locally and Firefox in CI; the equivalence test has one documented Firefox divergence (`noscript`, scripting-flag parse).
+- **The DOMPurify version.** It is pinned to an exact version because profile output stability depends on it; the bump policy is in AGENTS.md. A supply-chain review of the dependency is still a reasonable pre-production step.
+- **The hard denylist** (`on*`, `formaction`, `srcdoc`, `action`, `xlink:href`) and the always-checked URL-attribute list for completeness against attribute-based vectors.
+- **The `email-v1` scaffold**, before it is used for anything beyond a starting point ([safe-fragment#2](https://github.com/johnhenry/safe-fragment/issues/2)).
+
+## Security model
+
+**What safe-fragment guarantees:**
+
+- **Untrusted strings never reach an unsafe DOM sink.** `innerHTML`,
+  `outerHTML`, `insertAdjacentHTML`, `setHTMLUnsafe` (and equivalents) are
+  never called with unsanitized input anywhere in this codebase -- parsing
+  and allowlist enforcement always happen together, in an inert document,
+  before anything touches a live one. See
+  [ADR 0001](docs/adr/0001-html-as-data-not-code.md).
+- **Every render goes through a closed, versioned allowlist**, not a
+  denylist, enforced by `enforceProfile()`. An element or attribute not
+  explicitly listed in the active profile is removed -- raw-text/embedding
+  containers with their whole subtree, other disallowed elements unwrapped,
+  identically in both engines ([ADR 0004](docs/adr/0004-disallowed-elements-unwrap-or-drop.md))
+  -- never "escaped and left in place." The output is rebuilt from fresh nodes.
+- **URL filtering uses the platform `URL` parser, never regex**, on every
+  URL-valued attribute including custom-element attributes and every
+  `srcset` candidate. `javascript:`, `data:`, `vbscript:`, and `file:` are
+  rejected under every shipped profile (whitespace/entity/case-obfuscated
+  variants included), and protocol-relative/backslash URLs inherit the
+  _document's_ scheme, not an assumed `https:`.
+- **Two engines, one boundary.** The native Sanitizer API or a locked-down
+  DOMPurify do the initial parse; the shared `enforceProfile()` pass then
+  re-derives the allowed set from the profile. A corpus-wide test compares the
+  two engines' output for the whole XSS corpus plus a benign corpus. See
+  [ADR 0002](docs/adr/0002-native-sanitizer-with-dompurify-fallback.md).
+- **`on*` attributes are always stripped**, even if a profile or custom
+  element mistakenly lists one -- a hardcoded backstop.
+- **Reverse tabnabbing is closed:** `target` survives only as `_blank`, and a
+  kept target always overwrites `rel` with `noopener noreferrer`.
+- **DOM clobbering is closed:** every `id` is prefixed `user-content-` and every
+  in-fragment reference rewritten, so content cannot create `window.scriptUrl`
+  or shadow the host page's ids.
+- **`ui-v1` is inert by construction:** `<button>` is forced to
+  `type="button"`, and `data-*` is an explicit allowlist (`data-action`), never a
+  wildcard (framework handler attributes like `data-hx-on:click` cannot ride
+  through).
+- **No "unsafe"/"trusted"/"allowScripts" escape hatch exists** anywhere in the
+  public API. Built-in profiles are frozen; custom profiles are validated and
+  cannot allow dangerous elements, `on*`/`style`, or dangerous schemes.
+- **Importing this package never touches `window`/`document`/`HTMLElement`/
+  `customElements`** -- safe to `import` in Node/SSR.
+- **The `src` fetch is disabled by default**, GET-only, same-origin unless
+  allowlisted, redirect-refusing unless you opt in (and then re-validated),
+  size-capped while streaming, time-limited until the body is read, and a
+  stale fetch can never overwrite a newer render.
+- **Works under Trusted Types** (`require-trusted-types-for 'script'`): one
+  DOMPurify instance, hence one `dompurify` policy, per window.
+- **Bounded input:** `maxInputLength` (default 1,000,000 characters) rejects
+  oversized sources with `SOURCE_TOO_LARGE` before parsing.
+
+**What is still yours:**
+
+- **Choosing the right profile.** Rendering attacker-controlled content under
+  `ui-v1` (which allows `class` and, if you derive it so, custom elements) when
+  `article-v1` or `plain-text-v1` would do is a choice this library cannot make
+  for you.
+- **What your own custom elements do.** A derived profile lets your registered
+  custom elements receive sanitized attribute values; what their
+  `attributeChangedCallback` (or anything else) does with them is your code.
+- **`<example-sandbox>`'s executable code is never sanitized, and is not meant
+  to be.** It is a _separate_ component for application-authored, trusted code
+  samples -- see [`<example-sandbox>`](#example-sandbox). Feeding it untrusted
+  input is a misuse, not a bypass of `<safe-fragment>`.
+- **Shadow DOM (`scope="shadow"`) is a styling convenience, not an isolation
+  boundary** ([ADR 0003](docs/adr/0003-shadow-dom-is-not-sandboxing.md)).
+- **Same-origin GETs from relative `img src`** under `article-v1`/`ui-v1`
+  ([safe-fragment#6](https://github.com/johnhenry/safe-fragment/issues/6)) and
+  **host selectors matched by `ui-v1` `class` values**
+  ([safe-fragment#7](https://github.com/johnhenry/safe-fragment/issues/7)).
+- **Cost under the size cap on the DOMPurify path**
+  ([safe-fragment#5](https://github.com/johnhenry/safe-fragment/issues/5)): lower
+  `maxInputLength` if you render attacker-sized content in Safari.
+- **Content-level risks this library cannot see:** a syntactically valid
+  phishing link is not a code-execution bug. See
+  [docs/security-model.md](docs/security-model.md) "What this package does not
+  protect against".
+- **The pending independent review** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)),
+  `email-v1` ([#2](https://github.com/johnhenry/safe-fragment/issues/2)),
+  SVG/MathML ([#3](https://github.com/johnhenry/safe-fragment/issues/3)) and the
+  moving native Sanitizer spec ([#4](https://github.com/johnhenry/safe-fragment/issues/4)).
+
+Full detail: [docs/security-model.md](docs/security-model.md).
 
 ## Family
 
-Extracted conceptually from the same `johnhenry/lib` -> `domkit`/`domable`
-lineage in spirit -- constrained, versioned DOM rendering -- but is an
-independent, standalone, security-focused package with **no code
-dependency** on either. This is a genuinely new package (never published
-under any other name), so there is no provenance note beyond this one.
+safe-fragment is the sanitizer the family reaches for when markup comes from
+somewhere less trusted than your own source. It has no runtime dependency on
+any sibling; the relationships are mechanisms, named below.
 
+- **[`@johnhenry/html-modules`](https://github.com/johnhenry/html-modules)** --
+  html-modules stamps component templates into the page as real DOM and tracks
+  an opt-in template sanitizer for less-trusted modules
+  ([html-modules#3](https://github.com/johnhenry/html-modules/issues/3)).
+  `sanitizeToFragment(html, { profile })` (or `sanitizeToFragmentSync` after
+  `preloadSanitizer()`) is the hook that fits: it returns a detached,
+  profile-conformant `DocumentFragment` plus a report of everything stripped,
+  with a custom profile such as `ui--*` custom-element prefix patterns for a
+  module's own components. A `<safe-fragment>` inside a component template
+  does the same job declaratively for untrusted slots. Not a dependency in
+  either direction yet; the issue tracks the wiring.
+- **[`@johnhenry/window-algebra`](https://github.com/johnhenry/window-algebra)** --
+  window-algebra's `htmlSurface(element)` hosts any element, so
+  `htmlSurface(safeFragmentEl)` puts sanitized content in a window; it only
+  calls `mount`/`unmount`, so neither package knows the other. With the default
+  `scope="light"` the rendered wrapper is an ordinary child of the host, so it
+  moves with the element into a pop-out document: `adoptedCallback` re-arms
+  observers against the new window and, because nothing changed, nothing
+  re-renders. (`scope="shadow"` also moves, but is not isolation.)
+- **[`@johnhenry/mport`](https://github.com/johnhenry/mport)** -- the CDN router
+  that compiles to an import map. safe-fragment's DOMPurify fallback needs a
+  `dompurify` import-map entry on pages with no bundler; on raw-file CDNs list
+  it explicitly: `mport build @johnhenry/safe-fragment@0 dompurify@3.4.16`
+  (see [No bundler / import map](#no-bundler--import-map)). Not a dependency.
 - [`@johnhenry/domable`](https://github.com/johnhenry/domable) -- HTML
-  text/DOM/React-shape conversions and a hyperscript builder. Not a
-  dependency of this package; `safe-fragment` builds its own DOM directly
+  text/DOM/React-shape conversions and a hyperscript builder. **Not a
+  dependency** of this package; `safe-fragment` builds its own DOM directly
   from sanitized fragments rather than composing through domable's
   `createElement`.
-- [`@johnhenry/domkit`](https://github.com/johnhenry/domkit) -- a toolkit
-  of custom-element/shadow-DOM authoring primitives built on domable.
-  Also not a dependency -- `safe-fragment`'s custom elements are built
-  directly against the platform Custom Elements API (via the
-  factory-function pattern in docs/architecture.md) to keep the
-  security-critical code path free of any indirection this package
-  doesn't control the audit surface of.
+- [`@johnhenry/domkit`](https://github.com/johnhenry/domkit) -- a toolkit of
+  custom-element/shadow-DOM authoring primitives built on domable. Also **not a
+  dependency** -- `safe-fragment`'s custom elements are built directly against
+  the platform Custom Elements API (the factory-function pattern in
+  docs/architecture.md) to keep the security-critical code path free of
+  indirection this package doesn't control the audit surface of.
 
-The one real, justified runtime dependency is
-[DOMPurify](https://github.com/cure53/DOMPurify), used only as the
-fallback sanitization engine (see
-[ADR 0002](docs/adr/0002-native-sanitizer-with-dompurify-fallback.md)) --
-never vendored, never used with its permissive defaults.
+The one real runtime dependency is [DOMPurify](https://github.com/cure53/DOMPurify)
+(exact-pinned), used only as the fallback sanitization engine (see
+[ADR 0002](docs/adr/0002-native-sanitizer-with-dompurify-fallback.md)) -- never
+vendored, never used with its permissive defaults.
 
 ## License
 

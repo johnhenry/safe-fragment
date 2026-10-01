@@ -6,39 +6,49 @@
 src/
   index.ts                    Public API surface (no DOM globals touched at module scope)
   errors.ts                   SafeFragmentError + the stable error-code enum
-  types.ts                    SanitizationReport, event detail types, RenderMode/RenderScope
+  types.ts                    SanitizationReport, RenderResult, event detail types
+  shared-state.ts             globalThis-keyed store shared by the ESM and CJS builds
   platform/
     environment.ts            Lazy, function-scoped access to document/customElements/HTMLElement
   policy/
-    profile.ts                ProfileDefinition shape
-    registry.ts                Built-in profile registry + defineProfile()
-    url.ts                     checkUrl() -- URL-parser-based scheme allowlisting (no regex)
+    profile.ts                ProfileDefinition shape + custom-element name/pattern helpers
+    registry.ts               Frozen built-ins + registerProfile/unregisterProfile/deriveProfile
+    url.ts                    checkUrl() -- URL-parser-based scheme allowlisting (no regex)
   profiles/
-    plain-text-v1.ts, article-v1.ts, ui-v1.ts, email-v1.ts
+    plain-text-v1.ts, article-v1.ts, ui-v1.ts, email-v1.ts   (exported as *_PROFILE definitions)
   sanitize/
-    capabilities.ts            hasNativeSanitizer() feature detection
-    config.ts                  Profile -> engine baseline config (elements/attributes only)
-    native.ts                  Native Sanitizer API (Element#setHTML) engine
-    dompurify.ts                DOMPurify fallback engine (dynamic import)
-    enforce.ts                  enforceProfile() -- the authoritative allowlist pass
-    index.ts                    sanitize() -- orchestrates engine selection + enforceProfile
+    capabilities.ts           hasNativeSanitizer() feature detection
+    config.ts                 Profile -> engine baseline config
+    dangerous.ts              The drop-subtree element list shared by both engines + enforceProfile
+    native.ts                 Native Sanitizer API (setHTML) engine, inert-document parse + report diff
+    dompurify.ts              DOMPurify fallback: loader, one instance per window, hooks
+    enforce.ts                enforceProfile() -- the authoritative allowlist pass
+    rebuild.ts                Rebuilds the enforced fragment from fresh nodes
+    index.ts                  sanitize()/sanitizeSync(): engine selection + enforce + rebuild
+    public.ts                 sanitizeToFragment()/sanitizeToFragmentSync()
+    preload.ts                preloadSanitizer()
   source/
-    fetch.ts                    fetchSource() -- the `src` remote-fetch capability model
+    fetch.ts                  fetchSource() -- the `src` remote-fetch capability model
   render/
-    safe-fragment-element.ts    createSafeFragmentElementClass() factory
-    register.ts                  registerSafeFragment()
+    safe-fragment-element.ts  createSafeFragmentElementClass() factory
+    element-types.ts          SafeFragmentElement interface, event map, HTMLElementTagNameMap
+    register.ts               registerSafeFragment(), getSafeFragmentElementClass()
   sandbox/
     example-sandbox-element.ts  createExampleSandboxElementClass() factory
-    register.ts                  registerExampleSandbox()
+    register.ts                 registerExampleSandbox()
 test/
-  unit/          Pure-logic tests (URL policy, enforceProfile, profile shape, registry, errors)
-  integration/   Custom-element lifecycle, fetch policy, example-sandbox isolation
-  security/      The adversarial XSS regression corpus, run against both engines
-  fixtures/      Shared fixture data (the XSS corpus itself)
+  unit/          Pure-logic tests (URL policy, enforceProfile, rebuild, profiles, registry, errors)
+  integration/   Element lifecycle, fetch policy, DOMPurify loading + Trusted Types, public API, sandbox
+  security/      XSS corpus + benign corpus + cross-engine equivalence + clobbering, run per engine
+  fixtures/      Shared corpus data (xss-corpus.ts, benign-corpus.ts)
+  helpers/       Shared test helpers (normalized DOM serialization)
+  examples/      Smoke tests of the built examples (npm run examples)
+  dist/          Node tests of the built ESM+CJS packages (npm run test:dist)
 examples/
-  article-viewer/       article-v1 rendering a blog-post-shaped fixture
-  ui-protocol-demo/     ui-v1 + data-action delegation + a registered custom element
-  sandbox-playground/   <example-sandbox> running a small live code sample
+  01-article-viewer/      article-v1 rendering a blog-post-shaped fixture
+  02-ui-protocol-demo/    a derived ui-v1 profile + data-action delegation + a custom element
+  03-sandbox-playground/  <example-sandbox> running a small live code sample
+  04-playground/          interactive: unprotected vs protected vs report
 docs/
   architecture.md (this file), profiles.md, security-model.md, adr/
 ```
@@ -73,53 +83,27 @@ At a high level, `<safe-fragment>`'s `render()`:
 2. Resolves and validates the named profile.
 3. Fires the cancelable `before-render` event.
 4. Fetches (if source is `src`) or reads the raw string.
-5. Calls `sanitize()`, which picks an engine and runs the shared
-   `enforceProfile` pass.
+5. Calls `sanitize()`: size check, engine selection (inert-document parse),
+   the shared `enforceProfile` pass, then `rebuildFragment`.
 6. Replaces the contents of a dedicated wrapper element
    (`getRenderedRoot()`) with the sanitized fragment.
-7. Fires `render` (success) or `reject` (any failure along the way).
+7. Fires `render` (success) or `reject` (any failure along the way; stale
+   content is cleared), and resolves `render()` with a result object
+   (`rendered` | `rejected` | `superseded` | `disabled`).
 
-Renders are **microtask-coalesced**: multiple synchronous property/
-attribute changes in the same tick collapse into a single `render()` call,
-and **token-superseded**: each `render()` call captures a monotonically
-increasing token; if a newer `render()` starts before an older one
-finishes (including its `await`ed fetch/sanitize steps), the older one's
-late-arriving result is silently discarded rather than clobbering the
-newer one. The `src` fetch path additionally aborts its own previous
-in-flight `AbortController` on every new `render()` call.
+Every `await` is followed by a re-check of the render token and the
+`disabled` state, so `clear()`, disabling, or a newer render can never be
+overtaken by a stale one.
 
-## Light DOM vs. shadow scope
+## State shared across the ESM and CJS builds
 
-`<safe-fragment>` renders into a dedicated child element marked
-`data-safe-fragment-root` and `part="content"` -- in light DOM by default
-(a direct child of the host element, so a `<template>` source child
-coexists with the rendered output without either destroying the other on
-re-render), or inside an open `ShadowRoot` when `scope="shadow"`. See
-[ADR 0003](adr/0003-shadow-dom-is-not-sandboxing.md): this is a styling/
-encapsulation choice, not a security one. This package deliberately ships
-no default host styling (no injected stylesheet, no forced
-`display: contents`) -- an application that wants `safe-fragment` to lay
-out as a block element should say so in its own CSS.
-
-## `<example-sandbox>`: a genuinely separate trust model
-
-`<example-sandbox>` lives in its own `src/sandbox/` tree with its own
-`register*()` function, on purpose -- an application that only needs
-`<safe-fragment>` never has to load or register it. Its iframe is
-sandboxed with only `allow-scripts` (specifically **not**
-`allow-same-origin`, so the iframe's origin is opaque and it cannot
-synchronously read the host page's cookies/localStorage/DOM even though
-the code inside it runs for real; **not** `allow-top-navigation`, so it
-cannot redirect the host page). Communication back to the host is a
-narrow `postMessage` protocol (`ready`/`console`/`error`), authenticated
-by comparing `event.source` to the iframe's own `contentWindow` (not by
-trusting `event.origin`, which is `"null"` for an opaque-origin iframe by
-design). `test/integration/example-sandbox.test.ts` verifies the
-isolation directly: code that tries `parent.document.title` inside the
-sandbox throws a `SecurityError`, caught and reported, rather than
-succeeding.
-
-## Known limitations
-
-See the README's "Known limitations" section for the authoritative,
-up-to-date list of what is fully implemented vs. scaffolded.
+An application can load both builds of this package (its own code as ESM, a
+dependency via `require`). Each build is a separate module instance, so
+anything held in a module-level variable would exist twice. The profile
+registry, the DOMPurify loader and the per-window DOMPurify instance cache
+therefore live in one object on `globalThis` under `Symbol.for(...)`
+(`src/shared-state.ts`), created lazily inside functions (never at module top
+level). `SafeFragmentError` defines `Symbol.hasInstance` by shape so
+`instanceof` also holds across builds. `test/dist/dual-package.test.ts`
+loads both built files in Node and checks all of this. Do not add other
+module-level mutable state.

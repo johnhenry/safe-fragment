@@ -35,7 +35,7 @@ Please include:
   relevant.
 - What you expected to happen vs. what actually happened.
 
-A reproduction that fits the shape of `test/security/fixtures/xss-corpus.ts`
+A reproduction that fits the shape of `test/fixtures/xss-corpus.ts`
 (a `{ profile, input, forbiddenSubstrings }` entry) is especially useful
 and will likely become a permanent regression test either way.
 

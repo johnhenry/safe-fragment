@@ -4,7 +4,7 @@
  * Deliberately implemented with the platform `URL` parser, never regex.
  * Regex-based scheme checks are a classic XSS bypass vector (control
  * characters, tabs/newlines inside the scheme, mixed-case `JaVaScRiPt:`,
- * leading whitespace, etc.) -- see test/security/fixtures for concrete
+ * leading whitespace, etc.) -- see test/fixtures/xss-corpus.ts for concrete
  * obfuscated payloads this approach neutralizes for free, because the
  * WHATWG URL parser strips/normalizes exactly the characters browsers'
  * own navigation algorithm strips before it ever tokenizes a scheme. A

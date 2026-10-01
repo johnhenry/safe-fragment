@@ -17,7 +17,7 @@ export type SafeFragmentErrorCode =
   | "UNKNOWN_PROFILE"
   /** A profile definition whose name and `version` disagree (e.g. `"x-v2"` declaring version 1). */
   | "PROFILE_MISMATCH"
-  /** `registerProfile`/`defineProfile` called with missing or invalid arguments, or colliding with a built-in. */
+  /** `registerProfile`/`deriveProfile`/`unregisterProfile` called with missing or invalid arguments, or colliding with a built-in. */
   | "INVALID_PROFILE"
   // Sanitization
   | "SANITIZE_FAILED"

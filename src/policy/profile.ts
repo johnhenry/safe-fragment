@@ -36,10 +36,13 @@ export interface ProfileDefinition {
   readonly urlAttributes: readonly string[];
   /**
    * Schemes allowed in URL-valued attributes. Use the literal strings
-   * `"relative"` (no scheme / path-relative / protocol-relative same-origin
-   * URLs) and `"https:"` / `"mailto:"` / etc (colon included, matching
-   * `URL#protocol`). Never include `"javascript:"`, `"data:"`,
-   * `"vbscript:"`, or `"file:"` in a shipped profile.
+   * `"relative"` (no scheme, no authority: a path, query or fragment
+   * reference to the same document/origin) and `"https:"` / `"mailto:"` /
+   * etc (colon included, matching `URL#protocol`). Protocol-relative
+   * (`//host`) and backslash (`\\host`) URLs are NEVER `"relative"`: they
+   * are judged by the scheme they inherit from the document's base URL.
+   * `registerProfile` refuses `"javascript:"`, `"data:"`, `"vbscript:"`,
+   * `"file:"` and `"blob:"`.
    */
   readonly urlSchemes: readonly string[];
   /**
