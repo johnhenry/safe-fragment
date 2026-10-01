@@ -2,6 +2,7 @@ import type { SanitizerEngineKind } from "../types.js";
 import { SafeFragmentError } from "../errors.js";
 import { getGlobalDocument } from "../platform/environment.js";
 import { hasNativeSanitizer } from "./capabilities.js";
+import { getInertRealm, type InertRealmMode } from "../platform/realm.js";
 import { getDOMPurify, setDOMPurifyLoader, type DOMPurifyLoader } from "./dompurify.js";
 
 export interface PreloadSanitizerOptions {
@@ -15,6 +16,8 @@ export interface PreloadSanitizerOptions {
    * regardless, so the synchronous API works even if you force the fallback.
    */
   engine?: "auto" | "dompurify";
+  /** Where DOMPurify will be created (see `SanitizeOptions.inertRealm`); must match what you pass to `sanitizeToFragment`. Default `"auto"`. */
+  inertRealm?: InertRealmMode;
 }
 
 /**
@@ -33,7 +36,7 @@ export async function preloadSanitizer(options: PreloadSanitizerOptions = {}): P
   }
   if (options.loadDOMPurify) setDOMPurifyLoader(options.loadDOMPurify);
   if ((options.engine ?? "auto") === "auto" && hasNativeSanitizer(doc)) return "native";
-  const win = doc.defaultView;
+  const win = getInertRealm(doc, options.inertRealm)?.window ?? doc.defaultView;
   if (!win) {
     throw new SafeFragmentError("SANITIZER_UNAVAILABLE", "DOMPurify fallback requires a Document with a defaultView (Window); none is available.");
   }

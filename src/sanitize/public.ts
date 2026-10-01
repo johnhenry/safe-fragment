@@ -5,6 +5,7 @@ import { getGlobalDocument } from "../platform/environment.js";
 import { sanitize, sanitizeSync } from "./index.js";
 import type { DOMPurifyLoader } from "./dompurify.js";
 import type { CidResolver } from "../policy/cid.js";
+import type { InertRealmMode } from "../platform/realm.js";
 
 export interface SanitizeToFragmentOptions {
   /** Name of a registered profile (a built-in, or one added with `registerProfile`). Required; there is no default. */
@@ -30,6 +31,8 @@ export interface SanitizeToFragmentOptions {
    * attribute is removed. Allowed on `img src` and `background` only.
    */
   resolveCid?: CidResolver;
+  /** Where the engines parse: `"auto"` (default), `"iframe"` or `"document"`. See `SanitizeOptions.inertRealm` and ADR 0012. */
+  inertRealm?: InertRealmMode;
   /** DOMPurify loader for this call (see `registerSafeFragment({ loadDOMPurify })`). */
   loadDOMPurify?: DOMPurifyLoader;
 }
@@ -71,6 +74,7 @@ export async function sanitizeToFragment(html: string, options: SanitizeToFragme
     loadDOMPurify: options.loadDOMPurify,
     idPolicy: options.idPolicy,
     resolveCid: options.resolveCid,
+    inertRealm: options.inertRealm,
   });
 }
 
@@ -88,5 +92,6 @@ export function sanitizeToFragmentSync(html: string, options: SanitizeToFragment
     baseUrl: options.baseUrl,
     idPolicy: options.idPolicy,
     resolveCid: options.resolveCid,
+    inertRealm: options.inertRealm,
   });
 }

@@ -9,19 +9,15 @@ import type { DOMPurifyFactory } from "../../src/sanitize/dompurify.js";
 // safe-fragment#13: parsing untrusted input must not report CSP violations
 // (style-src-attr, style-src-elem, base-uri, img-src, ...).
 //
-// Measured result (Chromium 14x, see docs/review/known-divergences): the
-// engine-independent part is fixed and pinned here -- every violation EXCEPT
-// the ones below is zero in every engine, and WebKit/Firefox report nothing.
-// The irreducible part is Chromium's own HTML parser:
-//   * `style-src-attr`: the parser checks a `style=` attribute the moment it
-//     creates the element, in ANY document that shares the page's execution
-//     context (live, createHTMLDocument, template-contents, DOMParser, XML,
-//     shadow root, Document.parseHTML: all measured), connected or not.
-//   * `style-src-elem` / `base-uri`: checked when the element is CONNECTED to
-//     its document. The native engine parses into an unconnected <div>, so it
-//     never reports them; DOMPurify's DOMParser document connects them.
-// Nothing short of a CSP-free realm avoids these, and a string pre-filter
-// would be a regex/tokenizer sanitizer, which this project does not have.
+// Measured (Chromium 14x): Chromium's own HTML parser checks the page's CSP while it parses, in EVERY document
+// that shares the page's execution context (the live document, createHTMLDocument, new Document(), a template's
+// content document, DOMParser documents, XML documents, shadow roots, Document.parseHTML, setHTML on a template,
+// a shadow root or an SVG element: twelve contexts, all report `style-src-attr` for a `style=` attribute, connected
+// or not; `style-src-elem`/`base-uri` are reported when the element is connected to the document being parsed,
+// which DOMPurify's DOMParser document does). The one context that reports nothing is the initial document of a
+// hidden `about:blank` iframe, so the engines parse there (ADR 0012, `inertRealm: "auto"` on Chromium):
+//   * default realm: zero violations in every engine, every profile, every input below;
+//   * `inertRealm: "document"` (the page's own inert document): only the irreducible directives, pinned below.
 
 const frames: HTMLIFrameElement[] = [];
 afterEach(() => {
@@ -75,11 +71,11 @@ function watchViolations(doc: Document): { stop(): Promise<string[]> } {
 const factory = createDOMPurify as unknown as DOMPurifyFactory;
 interface Fixture {
   html: string;
-  /** Chromium reports `style-src-attr` while PARSING this (all engines). */
+  /** With `inertRealm: "document"`, Chromium reports `style-src-attr` while PARSING this (all engines). */
   styleAttr?: true;
-  /** Chromium's DOMParser document reports `style-src-elem` (DOMPurify engine only). */
+  /** With `inertRealm: "document"`, Chromium's DOMParser document reports `style-src-elem` (DOMPurify engine only). */
   styleElem?: true;
-  /** Chromium's DOMParser document reports `base-uri` (DOMPurify engine only). */
+  /** With `inertRealm: "document"`, Chromium's DOMParser document reports `base-uri` (DOMPurify engine only). */
   base?: true;
 }
 const INPUTS: Record<string, Fixture> = {
@@ -104,9 +100,12 @@ const INPUTS: Record<string, Fixture> = {
 };
 
 const IS_CHROMIUM = /Chrome\//.test(navigator.userAgent);
+// `inertRealm: "iframe"` is not exercised on Firefox: `auto` never uses it there (Firefox never reported), and Firefox replaces an
+// iframe's initial about:blank document asynchronously, which is not worth taking on where it buys nothing (ADR 0012).
+const IS_FIREFOX = /Firefox\//.test(navigator.userAgent);
 
-/** The only violations Chromium's own parser is allowed to report for a fixture (see the header comment). */
-function permitted(engine: "native" | "dompurify", fx: Fixture): Set<string> {
+/** With `inertRealm: "document"`: the only violations Chromium's own parser is allowed to report for a fixture. */
+function permittedInDocumentRealm(engine: "native" | "dompurify", fx: Fixture): Set<string> {
   const ok = new Set<string>();
   if (!IS_CHROMIUM) return ok;
   if (fx.styleAttr) ok.add("style-src-attr");
@@ -115,7 +114,7 @@ function permitted(engine: "native" | "dompurify", fx: Fixture): Set<string> {
   return ok;
 }
 
-describe("CSP enforced: no avoidable violations while parsing hostile input (safe-fragment#13)", () => {
+describe("CSP enforced: zero violations while parsing hostile input (safe-fragment#13, ADR 0012)", () => {
   it("control: the frame really reports a style attribute once it is connected", async () => {
     const doc = await makeEnforcedFrame();
     const watch = watchViolations(doc);
@@ -128,30 +127,63 @@ describe("CSP enforced: no avoidable violations while parsing hostile input (saf
   const ambient = hasNativeSanitizer(document) ? "native" : "dompurify";
   const engines: Array<"native" | "dompurify"> = ["dompurify"];
   if (hasNativeSanitizer(document)) engines.push("native");
-  for (const engine of engines) {
-    for (const profileName of ["article-v1", "ui-v1", "email-v1"]) {
-      it(`engine: ${engine}, profile: ${profileName}`, async () => {
-        const doc = await makeEnforcedFrame();
-        const profile = getProfile(profileName)!;
-        const offenders: Record<string, string[]> = {};
-        for (const [name, fx] of Object.entries(INPUTS)) {
-          const watch = watchViolations(doc);
-          const results = [
-            await sanitize(doc, fx.html, profile, { forceEngine: engine, loadDOMPurify: async () => factory }),
-            sanitizeSync(doc, fx.html, profile, { forceEngine: engine }),
-          ];
-          if (engine === ambient) await sanitizeToFragment(fx.html, { profile: profileName, document: doc, loadDOMPurify: async () => factory });
-          // the parse never touches the live tree: no node of the result is connected
-          for (const r of results) {
-            expect(r.fragment.ownerDocument).not.toBe(doc);
-            expect([...r.fragment.querySelectorAll("*")].some((e) => e.isConnected)).toBe(false);
-          }
-          const allowed = permitted(engine, fx);
-          const seen = [...new Set((await watch.stop()).map((v) => v.split(" ")[0]!))].filter((d) => !allowed.has(d));
-          if (seen.length) offenders[name] = seen;
-        }
-        expect(offenders).toEqual({});
-      });
+
+  for (const realmMode of ["auto", "iframe", "document"] as const) {
+    for (const engine of engines) {
+      for (const profileName of ["article-v1", "ui-v1", "email-v1"]) {
+        const skipped = realmMode === "iframe" && IS_FIREFOX;
+        it.skipIf(skipped)(
+          `inertRealm ${realmMode}, engine: ${engine}, profile: ${profileName}${skipped ? " [SKIPPED on Firefox: the iframe realm is not used there]" : ""}`,
+          async () => {
+            const doc = await makeEnforcedFrame();
+            const profile = getProfile(profileName)!;
+            const offenders: Record<string, string[]> = {};
+            for (const [name, fx] of Object.entries(INPUTS)) {
+              const watch = watchViolations(doc);
+              const opts = { forceEngine: engine, loadDOMPurify: async () => factory, inertRealm: realmMode } as const;
+              const results = [await sanitize(doc, fx.html, profile, opts), sanitizeSync(doc, fx.html, profile, opts)];
+              if (engine === ambient)
+                await sanitizeToFragment(fx.html, { profile: profileName, document: doc, loadDOMPurify: async () => factory, inertRealm: realmMode });
+              // the parse never touches the live tree: no node of the result is connected, none belongs to the live document
+              for (const r of results) {
+                expect(r.fragment.ownerDocument).not.toBe(doc);
+                expect([...r.fragment.querySelectorAll("*")].some((e) => e.isConnected)).toBe(false);
+              }
+              const allowed = realmMode === "document" ? permittedInDocumentRealm(engine, fx) : new Set<string>();
+              const seen = [...new Set((await watch.stop()).map((v) => v.split(" ")[0]!))].filter((d) => !allowed.has(d));
+              if (seen.length) offenders[name] = seen;
+            }
+            expect(offenders).toEqual({});
+          },
+        );
+      }
     }
   }
+
+  it.skipIf(IS_FIREFOX)("the iframe realm is one hidden, empty, scriptless frame per document, and is rebuilt if the host removes it", async () => {
+    const doc = await makeEnforcedFrame();
+    const profile = getProfile("article-v1")!;
+    const opts = { forceEngine: "dompurify", loadDOMPurify: async () => factory, inertRealm: "iframe" } as const;
+    await sanitize(doc, "<p>a</p>", profile, opts);
+    await sanitize(doc, "<p>b</p>", profile, opts);
+    const frames = doc.querySelectorAll("iframe[data-safe-fragment-realm]");
+    if (frames.length === 0) return; // the page does not allow it: the default realm was used, which is the documented fallback
+    expect(frames).toHaveLength(1);
+    const frame = frames[0] as HTMLIFrameElement;
+    expect(frame.hidden).toBe(true);
+    expect(frame.hasAttribute("src")).toBe(false);
+    expect(frame.parentElement).toBe(doc.documentElement);
+    frame.remove(); // an application clearing the page
+    const watch = watchViolations(doc);
+    const again = await sanitize(doc, '<p style="x">c</p>', profile, opts);
+    expect(again.fragment.textContent).toBe("c");
+    expect(doc.querySelectorAll("iframe[data-safe-fragment-realm]")).toHaveLength(1);
+    expect(await watch.stop()).toEqual([]);
+  });
+
+  it("inertRealm: document never adds an iframe", async () => {
+    const doc = await makeEnforcedFrame();
+    await sanitize(doc, "<p>a</p>", getProfile("article-v1")!, { forceEngine: "native", inertRealm: "document" }).catch(() => undefined);
+    expect(doc.querySelectorAll("iframe")).toHaveLength(0);
+  });
 });

@@ -7,6 +7,7 @@
 //   npm run fuzz -- --seed 7 --only 1234            # re-run one case of a seed
 //   npm run fuzz -- --browsers chromium,webkit      # default: SF_BROWSERS, else all three
 //   npm run fuzz -- --no-corpus                     # skip the fixed corpus replay
+//   npm run fuzz -- --realm document                # where the engines parse: auto (default), iframe, document (ADR 0012)
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
@@ -26,6 +27,7 @@ const env = {
 if (flag("only") !== undefined) env.VITE_SF_FUZZ_ONLY = flag("only");
 if (args.includes("--no-corpus")) env.VITE_SF_FUZZ_CORPUS = "0";
 if (flag("browsers")) env.SF_BROWSERS = flag("browsers");
+if (flag("realm")) env.VITE_SF_FUZZ_REALM = flag("realm");
 
 console.log(`fuzz: seed=${seed} iterations=${env.VITE_SF_FUZZ_ITERATIONS} browsers=${env.SF_BROWSERS ?? "chromium,webkit,firefox"}`);
 console.log(`fuzz: reproduce with  npm run fuzz -- --seed ${seed} --iterations ${env.VITE_SF_FUZZ_ITERATIONS}`);

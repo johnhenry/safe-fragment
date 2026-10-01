@@ -10,6 +10,7 @@ src/
   shared-state.ts             globalThis-keyed store shared by the ESM and CJS builds
   platform/
     environment.ts            Lazy, function-scoped access to document/customElements/HTMLElement
+    realm.ts                  The parse realm: a hidden about:blank iframe per document on Chromium (ADR 0012)
   policy/
     profile.ts                ProfileDefinition shape + custom-element name/pattern helpers
     registry.ts               Frozen built-ins + registerProfile/unregisterProfile/deriveProfile

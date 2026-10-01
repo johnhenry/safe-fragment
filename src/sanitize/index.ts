@@ -8,6 +8,7 @@ import { sanitizeWithDOMPurify, getDOMPurify, peekDOMPurify, type DOMPurifyLoade
 import { enforceProfile } from "./enforce.js";
 import { rebuildWithLength } from "./rebuild.js";
 import type { CidResolver } from "../policy/cid.js";
+import { getInertRealm, type InertRealmMode } from "../platform/realm.js";
 
 /** Default cap on the markup string handed to a sanitizer (UTF-16 code units); see `SanitizeOptions.maxInputLength`. */
 export const DEFAULT_MAX_INPUT_LENGTH = 1_000_000;
@@ -56,6 +57,13 @@ export interface SanitizeOptions {
   baseUrl?: string;
   /** Maps `cid:` content-ids to URLs for profiles that list `cid:` (email-v1); without it `cid:` URLs are removed. Never fetched by the library. See `CidResolver`. */
   resolveCid?: CidResolver;
+  /**
+   * Where the engines parse (ADR 0012, safe-fragment#13): `"auto"` (default) uses a hidden same-origin `about:blank`
+   * iframe on Chromium, where the default realm makes the browser's own parser report CSP violations for clean
+   * output, and the default realm elsewhere; `"iframe"` forces the iframe (falls back if it cannot be made);
+   * `"document"` always uses the default realm (`createHTMLDocument` + the page's window).
+   */
+  inertRealm?: InertRealmMode;
   /** Per-call DOMPurify loader; defaults to the one set via `registerSafeFragment`/`preloadSanitizer`, then to `import("dompurify")`. */
   loadDOMPurify?: DOMPurifyLoader;
 }
@@ -89,12 +97,13 @@ export async function sanitize(doc: Document, html: string, profile: ProfileDefi
   const baseline = buildBaselineConfig(profile);
   const useNative = options.forceEngine === "native" || (options.forceEngine === undefined && hasNativeSanitizer(doc));
 
+  const realm = getInertRealm(doc, options.inertRealm);
   if (useNative) {
-    const out = sanitizeWithNative(doc, html, baseline);
+    const out = sanitizeWithNative(doc, html, baseline, realm);
     return finish(doc, out.fragment, "native", out.removedElements, out.removedAttributes, html, profile, options, start);
   }
 
-  const win = doc.defaultView;
+  const win = realm?.window ?? doc.defaultView;
   if (!win) {
     throw new SafeFragmentError("SANITIZER_UNAVAILABLE", "DOMPurify fallback requires a Document with a defaultView (Window); none is available.");
   }
@@ -118,11 +127,12 @@ export function sanitizeSync(doc: Document, html: string, profile: ProfileDefini
 
   const baseline = buildBaselineConfig(profile);
   const useNative = options.forceEngine === "native" || (options.forceEngine === undefined && hasNativeSanitizer(doc));
+  const realm = getInertRealm(doc, options.inertRealm);
   if (useNative) {
-    const out = sanitizeWithNative(doc, html, baseline);
+    const out = sanitizeWithNative(doc, html, baseline, realm);
     return finish(doc, out.fragment, "native", out.removedElements, out.removedAttributes, html, profile, options, start);
   }
-  const purify = peekDOMPurify(doc.defaultView);
+  const purify = peekDOMPurify(realm?.window ?? doc.defaultView);
   if (!purify) {
     throw new SafeFragmentError(
       "SANITIZER_NOT_READY",

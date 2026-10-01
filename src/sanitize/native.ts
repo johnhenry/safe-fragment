@@ -1,6 +1,7 @@
 import type { BaselineConfig } from "./config.js";
 import type { SanitizationNote } from "../types.js";
 import { SafeFragmentError } from "../errors.js";
+import type { InertRealm } from "../platform/realm.js";
 
 /**
  * The current (spec-aligned) SanitizerConfig key names. The pre-2024
@@ -115,8 +116,9 @@ function diffInventories(input: Inventory | undefined, output: Inventory): { ele
   return { elements, attributes };
 }
 
-export function sanitizeWithNative(doc: Document, html: string, baseline: BaselineConfig): NativeOutput {
-  const inert = doc.implementation.createHTMLDocument("");
+export function sanitizeWithNative(doc: Document, html: string, baseline: BaselineConfig, realm?: InertRealm): NativeOutput {
+  // The inert document comes from the parse realm's DOMImplementation (ADR 0012): the default is `doc`'s own.
+  const inert = (realm?.implementation ?? doc.implementation).createHTMLDocument("");
   const container = inert.createElement("div") as unknown as SetHTMLCapableElement;
   const config: NativeSanitizerConfig = {
     // foreignObject is camelCase in the DOM and the engine matches case-sensitively; enforceProfile drops it either way.

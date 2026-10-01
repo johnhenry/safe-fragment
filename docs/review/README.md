@@ -91,7 +91,7 @@ Where the line numbers drift, search for the symbol; the table is generated from
 
 ## 3. The ADRs, summarized
 
-All in [`docs/adr/`](../adr/); each is short and states what it does not solve.
+All twelve in [`docs/adr/`](../adr/); each is short and states what it does not solve.
 
 1. **0001 HTML is data, never code.** No `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`setHTMLUnsafe` on untrusted strings anywhere in `src/` except `src/sanitize/`'s inert-document parse; no `unsafe`/`trusted`/`allowScripts` escape hatch in the API. `<example-sandbox>` is deliberately the opposite and separate. (Test code has one exception: the fuzzer's oracles, below.)
 2. **0002 Native Sanitizer API, DOMPurify fallback, shared authoritative pass.** Feature-detect `setHTML`; fall back to DOMPurify (lazy `import()`); never DOMPurify's defaults; `enforceProfile` is the boundary and re-derives the allowlist; URL schemes by the `URL` parser, not a regex. Records the shipped `KEEP_CONTENT: false` bug the equivalence test caught.
@@ -104,6 +104,7 @@ All in [`docs/adr/`](../adr/); each is short and states what it does not solve.
 9. **0009 `email-v1`.** `cid:` only on `img src`/`background`, only through the caller's `resolveCid`, answer re-validated (`https:`/`blob:`/raster `data:`); MSO comments removed; VML/Office XML dropped via `dropElements`; legacy layout attributes from a fixed list; no CSS.
 10. **0010 SVG and MathML opt-in.** `svg: "static"`/`mathml: "presentation"`; strict allowlists, character-scan value grammars, same-fragment references, text-only integration points, placement rules, namespace-correct rebuild; `use` is not equal across engines.
 11. **0011 `class` is an allowlist.** `allowedClasses` exact or `prefix*`; `ui-v1` and `component-template-v1` allow none; prefixing rejected and why.
+12. **0012 The parse realm.** On Chromium the engines parse through a hidden same-origin `about:blank` iframe (`inertRealm: "auto"`) because it is the only context where the browser's own parser does not report CSP violations (`style-src-attr`, `style-src-elem`, `base-uri`) for clean output (twelve others measured); falls back to the page's inert document; `"document"` opts out.
 
 ## 4. DOMPurify settings that are looser than its defaults
 
@@ -136,8 +137,7 @@ silently ignored by Chromium).
 
 Full list with reasons and tests: [known-divergences.md](known-divergences.md). In short: Firefox `<noscript>` parse (scripting flag),
 DOMPurify's mXSS heuristic over-removes in rare shapes (D3), the native engine removes `<use>` unconditionally (D4), the native
-report cannot list the engine's baseline removals (ADR 0007), Chromium reports `style-src-attr`/`style-src-elem`/`base-uri` while
-parsing hostile input (#13), and output trees are not always parser-canonical (benign nesting drift). None is a way to exceed a
+report cannot list the engine's baseline removals (ADR 0007), the parse realm differs by engine (an iframe on Chromium, ADR 0012), and output trees are not always parser-canonical (benign nesting drift). None is a way to exceed a
 profile; each is safe by construction or by `enforceProfile`.
 
 ## 6. Deliberate strictness (things that look like bugs)
@@ -238,7 +238,7 @@ Corpora: `test/fixtures/xss-corpus.ts` (about 40 entries, including the F-series
 | [11](https://github.com/johnhenry/safe-fragment/issues/11) | `<style>` unsupported (ADR 0006)                                          | Open as a documented non-goal; waits for this review                                                                                                                  |
 | [13](https://github.com/johnhenry/safe-fragment/issues/13) | CSP reports while parsing input with `style=`, `<style>`, `<base>`        | Open: not fixable by choosing a parse context (measured in 12 contexts); pinned and documented; see [known-divergences.md](known-divergences.md#chromium-csp-reports) |
 
-Closed by this work: #2 (`email-v1`), #3 (SVG/MathML, with the `use` divergence), #7 (class allowlist).
+Closed by this work: #2 (`email-v1`), #3 (SVG/MathML, with the `use` divergence), #7 (class allowlist), #13 (CSP reports while parsing).
 
 ## 10. Questions for the reviewer
 
@@ -265,7 +265,8 @@ Closed by this work: #2 (`email-v1`), #3 (SVG/MathML, with the `use` divergence)
 10. **Class and `part`.** `allowedClasses` prefix matching is `startsWith` after validation. `part` and `slot` remain unrestricted styling hooks on `component-template-v1`: same exposure class?
 11. **The report.** `snippet` carries up to 60 characters of an attacker-controlled value into a diagnostic object hosts may log. Acceptable?
 12. **Fuzzer gaps.** What would you add to the grammar or the oracles (a differential against a third parser, a CSS-injection oracle once `style` is considered, a layout-based UI redress oracle)?
-13. **Anything the packet does not say.** Which part of the boundary do you not trust the tests to cover?
+13. **The parse realm (ADR 0012).** Parsing in a hidden same-origin `about:blank` iframe is the only context found where Chromium's parser does not report CSP violations. Is a script-created iframe attached to `<html>` an acceptable footprint for a sanitizer? Does anything in a realm-owned DOMParser/DOMImplementation document differ from the page's (realm of constructors, `instanceof`, custom-element registry, Trusted Types policy per window) in a way that affects the output? Is `navigator.userAgentData` the right proxy for "the parser checks CSP"?
+14. **Anything the packet does not say.** Which part of the boundary do you not trust the tests to cover?
 
 ## 11. Reproducing everything
 

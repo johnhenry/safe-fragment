@@ -46,19 +46,15 @@ profile removes. Diagnostic only; the output is unaffected.
 
 <a id="chromium-csp-reports"></a>
 
-### Chromium CSP reports while parsing hostile input (issue #13)
+### Parse realm: an iframe on Chromium (issue #13, ADR 0012)
 
-Under a strict CSP, Chromium reports `style-src-attr` for a `style=""` attribute the moment its HTML parser creates the element, `style-src-elem` for a `<style>` and
-`base-uri` for a `<base>` once the element is connected to the document being parsed. Measured in twelve contexts, all of which report `style-src-attr`:
-the live document, `createHTMLDocument`, `new Document()`, a `<template>`'s content document, an XHTML `createDocument`, a `DOMParser` document, an XML `DOMParser` document, a
-shadow root, `Document.parseHTML`, `<template>.setHTML`, `ShadowRoot.setHTML`, an SVG-namespace context element. The check is on the element's execution context, not on whether the tree is connected.
-`style-src-elem` and `base-uri` are only reported when the element is connected to a document tree: the native engine parses into an unconnected `<div>` and never
-reports them; DOMPurify's `DOMParser` document connects them, so the DOMPurify engine on Chromium (only reachable by forcing it) does. WebKit reports nothing.
-
-What is done: the library connects nothing (asserted: no node of any result is connected, and none is owned by the live document), performs one parse per engine plus the
-native report's probe, and `test/integration/csp-violations.test.ts` pins that, per engine and profile, **only** the irreducible directives appear and only for
-inputs that contain the construct. What cannot be done without a CSP-free realm or a pre-parse string filter (a tokenizer, which this project does not have) is making the
-count zero. Hosts that report CSP violations as alerts have no library-side switch: they should filter reports whose `blockedURI` is `inline` and whose document is the page that calls the sanitizer, or accept the noise.
+Chromium's HTML parser checks the page's CSP while parsing, in every document that shares the page's execution context: `style-src-attr` for a `style=""` attribute the
+moment the parser creates the element (twelve contexts measured: the live document, `createHTMLDocument`, `new Document()`, a `<template>`'s content document, XHTML and
+XML documents, a `DOMParser` document, a shadow root, `Document.parseHTML`, `<template>.setHTML`, `ShadowRoot.setHTML`, an SVG context element), and `style-src-elem`/`base-uri`
+for elements connected to the document being parsed (DOMPurify's `DOMParser` document). Only the initial document of a hidden `about:blank` iframe reports nothing, so on
+Chromium (`navigator.userAgentData` defined; `inertRealm: "auto"`) the engines parse there. Firefox and Safari keep the page's own inert document and never reported.
+`inertRealm: "document"` restores the old behavior, and `test/integration/csp-violations.test.ts` pins exactly which directives it reports. Not equal across engines in
+one respect: Chromium has a hidden iframe in `<html>` after the first sanitization; the others do not.
 
 ## Not divergences, but visible
 

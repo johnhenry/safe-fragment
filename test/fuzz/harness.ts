@@ -62,8 +62,17 @@ export function fuzzResolveCid(cid: string): string | undefined {
   }
 }
 
+/** `VITE_SF_FUZZ_REALM=document|iframe|auto` picks where the engines parse (default auto, ADR 0012); `npm run fuzz -- --realm document`. */
+const REALM = ((import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_SF_FUZZ_REALM ?? "auto") as "auto" | "iframe" | "document";
+
 async function run(env: Env, profile: ProfileDefinition, input: string, engine: Engine, idPolicy?: "keep-in-shadow") {
-  return sanitize(env.doc, input, profile, { forceEngine: engine, loadDOMPurify: async () => factory, idPolicy, resolveCid: fuzzResolveCid });
+  return sanitize(env.doc, input, profile, {
+    forceEngine: engine,
+    loadDOMPurify: async () => factory,
+    idPolicy,
+    resolveCid: fuzzResolveCid,
+    inertRealm: REALM,
+  });
 }
 
 /**

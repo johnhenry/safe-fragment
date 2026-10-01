@@ -18,7 +18,8 @@ a disallowed element's content, identically in both engines) and
 [ADR 0008](adr/0008-mutation-xss-fuzzer-findings.md) (what the mutation-XSS fuzzer found and fixed),
 [ADR 0009](adr/0009-email-v1.md) (`email-v1`: `cid:`, Office markup, layout attributes),
 [ADR 0010](adr/0010-svg-and-mathml-opt-in.md) (opt-in static SVG and presentation MathML) and
-[ADR 0011](adr/0011-class-allowlist.md) (`class` is an allowlist). The reviewer packet,
+[ADR 0011](adr/0011-class-allowlist.md) (`class` is an allowlist),
+[ADR 0012](adr/0012-parse-realm-iframe-for-csp.md) (the parse realm: a hidden iframe on Chromium so parsing reports no CSP violations). The reviewer packet,
 [docs/review/](review/README.md), maps all of it to code.
 
 ## The pipeline, precisely
@@ -65,7 +66,8 @@ of it.
      created per window and reused (so a Trusted Types `dompurify` policy is
      registered once).
    - Both engines parse inside an **inert document** (no browsing context,
-     so nothing loads or runs), in `<body>`/`<div>` context, standards mode, so the same
+     so nothing loads or runs; on Chromium made by a hidden `about:blank` iframe's
+     `DOMImplementation`, [ADR 0012](adr/0012-parse-realm-iframe-for-csp.md)), in `<body>`/`<div>` context, standards mode, so the same
      input yields the same tree in both (DOMPurify is fed `<!DOCTYPE html><xmp></xmp>` before the
      input: the doctype is standards mode, `<xmp>` starts the body and stops a `<frameset>` from
      replacing it, [ADR 0008](adr/0008-mutation-xss-fuzzer-findings.md)). The native engine runs in a
@@ -266,10 +268,14 @@ documented interpretation over silently overreaching" instruction:
   `ui-v1` allows none; the classes a derived profile names are as safe as the host's
   stylesheet treats them ([ADR 0011](adr/0011-class-allowlist.md)). `part` is the same class
   of styling hook for component templates.
-- **CSP reports from the browser's own parser.** In Chromium, parsing hostile input that
-  contains `style=`, `<style>` or `<base>` reports `style-src-attr` / `style-src-elem` /
-  `base-uri` violations although the output is clean; the parser does it in every document
-  context (safe-fragment#13, pinned in `test/integration/csp-violations.test.ts`).
+- **CSP reports from the browser's own parser, if you opt out of the iframe realm.** In
+  Chromium, parsing hostile input that contains `style=`, `<style>` or `<base>` reports
+  `style-src-attr` / `style-src-elem` / `base-uri` violations although the output is clean; the
+  parser does it in every document context. The library avoids it by parsing in a hidden
+  same-origin `about:blank` iframe on Chromium (`inertRealm: "auto"`,
+  [ADR 0012](adr/0012-parse-realm-iframe-for-csp.md)), which is visible to
+  `querySelectorAll("iframe")` and observers; `inertRealm: "document"` never adds it and accepts
+  the reports (safe-fragment#13, pinned in `test/integration/csp-violations.test.ts`).
 - **Same-origin GET side effects from relative image URLs** under
   `article-v1`/`ui-v1` (safe-fragment#6); opt in to
   `blockRelativeAutoLoadUrls` via `deriveProfile`.

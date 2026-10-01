@@ -4,6 +4,7 @@ import { DEFAULT_FETCH_CAPABILITY, type FetchCapability } from "../source/fetch.
 import { SafeFragmentError } from "../errors.js";
 import { setDOMPurifyLoader, type DOMPurifyLoader } from "../sanitize/dompurify.js";
 import type { CidResolver } from "../policy/cid.js";
+import type { InertRealmMode } from "../platform/realm.js";
 
 export interface RegisterSafeFragmentOptions {
   /** Custom element tag name to register under. Defaults to `"safe-fragment"`; override only for naming collisions/testing. */
@@ -21,6 +22,12 @@ export interface RegisterSafeFragmentOptions {
   maxInputLength?: number;
   /** Resolves `cid:` URLs for profiles that allow them (email-v1). The library never fetches them; see `CidResolver`. */
   resolveCid?: CidResolver;
+  /**
+   * Where the sanitizer engines parse (ADR 0012, safe-fragment#13). `"auto"` (default): a hidden same-origin `about:blank`
+   * iframe on Chromium, so parsing hostile input reports no CSP violations; the page's own inert document elsewhere.
+   * `"document"` never adds an iframe to the page.
+   */
+  inertRealm?: InertRealmMode;
   /** Explicit `Document`/`CustomElementRegistry`/`HTMLElement` overrides -- mainly for tests that construct their own realm. Defaults to the ambient globals. */
   document?: Document;
   customElementRegistry?: CustomElementRegistry;

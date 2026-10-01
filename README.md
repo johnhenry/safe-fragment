@@ -306,7 +306,7 @@ const sync = sanitizeToFragmentSync(untrustedHtml, { profile: "article-v1" });
 ```
 
 Same pipeline, same guarantees, same `SanitizationReport`; options are
-`{ profile, document?, maxInputLength?, baseUrl?, idPolicy?, resolveCid?, loadDOMPurify? }` (`idPolicy: "keep-in-shadow"` keeps author ids and is safe only if you insert the fragment into a shadow root; see [docs/profiles.md](docs/profiles.md#ids-inside-a-shadow-root). `resolveCid` maps `cid:` content-ids to URLs for `email-v1`; the library never fetches them, see [docs/profiles.md](docs/profiles.md#email-v1)). The sync
+`{ profile, document?, maxInputLength?, baseUrl?, idPolicy?, resolveCid?, inertRealm?, loadDOMPurify? }` (`idPolicy: "keep-in-shadow"` keeps author ids and is safe only if you insert the fragment into a shadow root; see [docs/profiles.md](docs/profiles.md#ids-inside-a-shadow-root). `resolveCid` maps `cid:` content-ids to URLs for `email-v1`; the library never fetches them, see [docs/profiles.md](docs/profiles.md#email-v1). `inertRealm` (`"auto"` | `"iframe"` | `"document"`) picks where the engines parse, see [Known limitations](#known-limitations) and [ADR 0012](docs/adr/0012-parse-realm-iframe-for-csp.md)). The sync
 variant works only when the native engine exists or DOMPurify was already
 prepared; otherwise it throws `SANITIZER_NOT_READY` -- it fails closed. This is
 the entry point for template systems that need a sanitizer hook. The report
@@ -425,7 +425,7 @@ Known gaps (each has an issue):
 - **No independent security review yet** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)). Do not release or rely on this for hostile content before it.
 - **`email-v1` has no CSS**: inline `style=` and `<style>` are how mail is styled, and both are unsupported, so a "hidden" preheader becomes visible and CSS colours are lost; remote `https:` images load (tracking pixels) unless you derive a profile without `https:` ([ADR 0009](docs/adr/0009-email-v1.md), [safe-fragment#2](https://github.com/johnhenry/safe-fragment/issues/2)).
 - **SVG and MathML are opt-in and partial** ([ADR 0010](docs/adr/0010-svg-and-mathml-opt-in.md), [safe-fragment#3](https://github.com/johnhenry/safe-fragment/issues/3)): no animation, `image`, `foreignObject`, filters or `style`; and **`<use>` is removed by the native engine** (Chromium) while DOMPurify keeps a same-fragment one, so it works only on Safari/fallback.
-- **Parsing hostile input reports CSP violations in Chromium** (`style-src-attr` for any `style=` attribute, in every engine; `style-src-elem`/`base-uri` on the DOMPurify engine) although the output is clean: the browser's own HTML parser checks them while parsing, in every document context, connected or not ([safe-fragment#13](https://github.com/johnhenry/safe-fragment/issues/13), pinned by `test/integration/csp-violations.test.ts`). WebKit reports none.
+- **On Chromium the engines parse in a hidden same-origin `about:blank` iframe** (`inertRealm: "auto"`, [ADR 0012](docs/adr/0012-parse-realm-iframe-for-csp.md), [safe-fragment#13](https://github.com/johnhenry/safe-fragment/issues/13)), because Chromium's HTML parser reports CSP violations (`style-src-attr` for `style=`, `style-src-elem`/`base-uri` on the DOMPurify engine) while parsing hostile input in every other document context, although the output is clean. The iframe is empty, scriptless and hidden, one per document; it is visible to `querySelectorAll("iframe")` and observers. Set `inertRealm: "document"` to never add it (and accept the reports). A page that sandboxes or blocks the iframe falls back to the old behavior. Firefox and Safari are unaffected and unchanged.
 - **The native Sanitizer API spec is still moving**; only Chromium (and, per CI, Firefox) ship `setHTML`, and Safari takes the DOMPurify path ([safe-fragment#4](https://github.com/johnhenry/safe-fragment/issues/4)).
 - **DOMPurify's cost is quadratic in removed nodes**: `maxInputLength` bounds it, it does not remove it ([safe-fragment#5](https://github.com/johnhenry/safe-fragment/issues/5)).
 - **`article-v1`/`ui-v1` keep relative `img src`**, a same-origin GET on render; opt in to `blockRelativeAutoLoadUrls` ([safe-fragment#6](https://github.com/johnhenry/safe-fragment/issues/6)).
@@ -496,7 +496,10 @@ review ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)).
   size-capped while streaming, time-limited until the body is read, and a
   stale fetch can never overwrite a newer render.
 - **Works under Trusted Types** (`require-trusted-types-for 'script'`): one
-  DOMPurify instance, hence one `dompurify` policy, per window.
+  DOMPurify instance, hence one `dompurify` policy, per window, and no gated
+  sink is ever called with a string. Parsing hostile input produces no CSP
+  violations either (on Chromium via a hidden `about:blank` iframe realm,
+  [ADR 0012](docs/adr/0012-parse-realm-iframe-for-csp.md)).
 - **Bounded input:** `maxInputLength` (default 1,000,000 characters) rejects
   oversized sources with `SOURCE_TOO_LARGE` before parsing.
 

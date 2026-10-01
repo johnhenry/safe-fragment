@@ -2,6 +2,7 @@ import { SafeFragmentError, isSafeFragmentError, type SafeFragmentErrorCode } fr
 import type { RenderMode, RenderScope, IdPolicy, BeforeRenderDetail, RejectDetail, RenderResult, SourceKind, ClearDetail } from "../types.js";
 import type { SafeFragmentElement } from "./element-types.js";
 import type { CidResolver } from "../policy/cid.js";
+import type { InertRealmMode } from "../platform/realm.js";
 import { getProfile } from "../policy/registry.js";
 import { sanitize, DEFAULT_MAX_INPUT_LENGTH } from "../sanitize/index.js";
 import { fetchSource, ABORT_SUPERSEDED, type FetchCapability, DEFAULT_FETCH_CAPABILITY } from "../source/fetch.js";
@@ -17,6 +18,8 @@ export interface SafeFragmentElementDeps {
   maxInputLength?: number;
   /** Resolver for `cid:` URLs (email-v1); see `CidResolver`. */
   resolveCid?: CidResolver;
+  /** Where the engines parse; see `SanitizeOptions.inertRealm`. Default `"auto"`. */
+  inertRealm?: InertRealmMode;
 }
 
 type ResolvedSource = { kind: SourceKind; value: unknown } | { kind: "none" } | { kind: "ambiguous" };
@@ -359,7 +362,13 @@ export function createSafeFragmentElementClass(
 
       let sanitizeResult;
       try {
-        sanitizeResult = await sanitize(this.ownerDocument, rawHtml, profileDef, { truncated: false, maxInputLength, idPolicy, resolveCid: deps.resolveCid });
+        sanitizeResult = await sanitize(this.ownerDocument, rawHtml, profileDef, {
+          truncated: false,
+          maxInputLength,
+          idPolicy,
+          resolveCid: deps.resolveCid,
+          inertRealm: deps.inertRealm,
+        });
       } catch (error) {
         if (stale()) return this.#supersededResult();
         return this.#rejectRender(error);
