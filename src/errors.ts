@@ -19,6 +19,8 @@ export type SafeFragmentErrorCode =
   | "PROFILE_MISMATCH"
   /** `registerProfile`/`deriveProfile`/`unregisterProfile` called with missing or invalid arguments, or colliding with a built-in. */
   | "INVALID_PROFILE"
+  /** An option has a value outside its allowed set (e.g. `idPolicy: "none"`), or one that is only valid in another configuration (`id-policy="keep-in-shadow"` without `scope="shadow"`). */
+  | "INVALID_OPTION"
   // Sanitization
   | "SANITIZE_FAILED"
   | "SANITIZER_UNAVAILABLE"

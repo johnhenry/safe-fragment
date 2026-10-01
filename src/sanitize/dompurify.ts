@@ -164,14 +164,24 @@ export function sanitizeWithDOMPurify(purify: DOMPurifyLike, html: string, basel
       ALLOWED_TAGS: baseline.allowedElements,
       ALLOWED_ATTR: baseline.allowedAttributes,
       ALLOW_DATA_ATTR: false,
-      ALLOW_UNKNOWN_PROTOCOLS: false,
+      // True: with false, DOMPurify drops any non-URL attribute whose value
+      // merely looks like `scheme:` (`exportparts="a:b"`, `data-action="cart:add"`)
+      // while the native engine keeps it. `javascript:`/`vbscript:`/`data:` values
+      // are still refused by DOMPurify itself, and every URL-valued attribute goes
+      // through checkUrl in enforceProfile, which is the actual scheme gate for
+      // both engines.
+      ALLOW_UNKNOWN_PROTOCOLS: true,
       ALLOW_SELF_CLOSE_IN_ATTR: false,
       WHOLE_DOCUMENT: false,
       // Parse in <body> context, like the native engine's <div> context.
       // Without it a leading <noscript>/<title>/<style>/<meta> is parsed into
       // <head> and the two engines diverge (ADR 0004).
       FORCE_BODY: true,
-      SANITIZE_DOM: true,
+      // Off: it would drop any id/name value that collides with a document or
+      // form property (`<slot name="title">`, `<p id="title">`) on this engine
+      // only. enforceProfile namespaces ids AND clobberable `name`s itself,
+      // identically for both engines (safe-fragment#11).
+      SANITIZE_DOM: false,
       // Deliberately false: enforceProfile namespaces every id itself
       // (identically for both engines) and rewrites references; letting
       // DOMPurify prefix too would double-prefix and desync references.

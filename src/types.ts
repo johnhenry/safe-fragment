@@ -6,6 +6,16 @@ export type RenderMode = "replace" | "once" | "manual";
 /** Light DOM (default) vs an opt-in open shadow root. See docs/security-model.md -- Shadow DOM is NOT a security boundary. */
 export type RenderScope = "light" | "shadow";
 
+/**
+ * What happens to author-supplied `id`s (and every in-fragment reference to
+ * them). `"prefix"` (the default) namespaces them with `user-content-`:
+ * safe wherever the content lands. `"keep-in-shadow"` leaves them alone and
+ * is valid ONLY when the caller guarantees the fragment is inserted into a
+ * shadow root (never light DOM, never the document): ids inside a shadow
+ * root cannot clobber `window`/`document` properties. See docs/adr/0005.
+ */
+export type IdPolicy = "prefix" | "keep-in-shadow";
+
 /** Which sanitization engine actually produced a given render. */
 export type SanitizerEngineKind = "native" | "dompurify";
 

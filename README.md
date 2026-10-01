@@ -157,19 +157,20 @@ Enumerated values are matched case-insensitively. Properties set before the
 element was upgraded (frameworks, scripts that ran before
 `registerSafeFragment()`) are replayed through the setters on first connect.
 
-| Attribute     | Property      | Notes                                                                                                                                                                  |
-| ------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `profile`     | `.profile`    | Required. Name of a registered profile (`plain-text-v1`, `article-v1`, `ui-v1`, `email-v1`, or one you registered). There is no default.                               |
-| --            | `.html`       | Highest-precedence markup source. `undefined` behaves like `null`; a non-string is rejected with `INVALID_SOURCE`. Setting it schedules a render.                      |
-| `src`         | `.source`     | URL to fetch markup from. Disabled by default -- see [below](#the-src-remote-fetch-capability).                                                                        |
-| `content`     | --            | Legacy, lowest-precedence source. Emits a `console.warn` when used.                                                                                                    |
-| `render-mode` | `.renderMode` | `"replace"` (default) \| `"once"` \| `"manual"`. `clear()` and disabling reset `once`, so a later change renders again.                                                |
-| `scope`       | `.scope`      | `"light"` (default) \| `"shadow"`. Switching scope removes the stale wrapper. See [ADR 0003](docs/adr/0003-shadow-dom-is-not-sandboxing.md).                           |
-| `loading`     | `.loading`    | `"eager"` (default) \| `"lazy"` -- defers a `src` fetch until the element intersects the viewport. A changed `src` goes back through the gate; a reconnect re-arms it. |
-| `disabled`    | `.disabled`   | Clears the content, cancels any in-flight render and suspends rendering.                                                                                               |
-| `strict`      | `.strict`     | When present, more than one simultaneous markup source is an `AMBIGUOUS_SOURCE` rejection instead of silently picking by precedence.                                   |
-| `debug`       | `.debug`      | `console.warn`s the code/message of every `reject` event.                                                                                                              |
-| --            | `.sourceKind` | Read-only: which source `render()` would use now (`html-property`, `template-child`, `src`, `content-attribute`, `none`, `ambiguous`).                                 |
+| Attribute     | Property      | Notes                                                                                                                                                                                                                                     |
+| ------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `profile`     | `.profile`    | Required. Name of a registered profile (`plain-text-v1`, `article-v1`, `ui-v1`, `email-v1`, `component-template-v1`, or one you registered). There is no default.                                                                         |
+| --            | `.html`       | Highest-precedence markup source. `undefined` behaves like `null`; a non-string is rejected with `INVALID_SOURCE`. Setting it schedules a render.                                                                                         |
+| `src`         | `.source`     | URL to fetch markup from. Disabled by default -- see [below](#the-src-remote-fetch-capability).                                                                                                                                           |
+| `content`     | --            | Legacy, lowest-precedence source. Emits a `console.warn` when used.                                                                                                                                                                       |
+| `render-mode` | `.renderMode` | `"replace"` (default) \| `"once"` \| `"manual"`. `clear()` and disabling reset `once`, so a later change renders again.                                                                                                                   |
+| `scope`       | `.scope`      | `"light"` (default) \| `"shadow"`. Switching scope removes the stale wrapper. See [ADR 0003](docs/adr/0003-shadow-dom-is-not-sandboxing.md).                                                                                              |
+| `id-policy`   | `.idPolicy`   | `"prefix"` (default) \| `"keep-in-shadow"`. The latter keeps author ids and is honored only with `scope="shadow"`; otherwise the render rejects with `INVALID_OPTION`. See [docs/profiles.md](docs/profiles.md#ids-inside-a-shadow-root). |
+| `loading`     | `.loading`    | `"eager"` (default) \| `"lazy"` -- defers a `src` fetch until the element intersects the viewport. A changed `src` goes back through the gate; a reconnect re-arms it.                                                                    |
+| `disabled`    | `.disabled`   | Clears the content, cancels any in-flight render and suspends rendering.                                                                                                                                                                  |
+| `strict`      | `.strict`     | When present, more than one simultaneous markup source is an `AMBIGUOUS_SOURCE` rejection instead of silently picking by precedence.                                                                                                      |
+| `debug`       | `.debug`      | `console.warn`s the code/message of every `reject` event.                                                                                                                                                                                 |
+| --            | `.sourceKind` | Read-only: which source `render()` would use now (`html-property`, `template-child`, `src`, `content-attribute`, `none`, `ambiguous`).                                                                                                    |
 
 **Source precedence** (highest first): `.html` property > `<template>`
 child > `src` > legacy `content` attribute. Edits to a `<template>` source
@@ -223,12 +224,13 @@ exported as `createSafeFragmentElementClass(HTMLElement, deps)` and
 
 Full detail: [docs/profiles.md](docs/profiles.md).
 
-| Profile         | Status                                                      | Summary                                                                                                                 |
-| --------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `plain-text-v1` | Fully implemented, tested                                   | No HTML parsing at all -- `textContent` only.                                                                           |
-| `article-v1`    | Fully implemented, tested                                   | Rich read-mostly content: prose, headings, lists, tables, links, images.                                                |
-| `ui-v1`         | Fully implemented, tested                                   | Layout/interactive elements, `data-action` delegation, forced `type="button"`. Derive a profile to add custom elements. |
-| `email-v1`      | **Scaffold** -- see [Known limitations](#known-limitations) | Restrictive table-layout-friendly subset; blocks relative auto-loading URLs; no `cid:`/VML/MSO-comment handling yet.    |
+| Profile                 | Status                                                      | Summary                                                                                                                                   |
+| ----------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `plain-text-v1`         | Fully implemented, tested                                   | No HTML parsing at all -- `textContent` only.                                                                                             |
+| `article-v1`            | Fully implemented, tested                                   | Rich read-mostly content: prose, headings, lists, tables, links, images.                                                                  |
+| `ui-v1`                 | Fully implemented, tested                                   | Layout/interactive elements, `data-action` delegation, forced `type="button"`. Derive a profile to add custom elements.                   |
+| `component-template-v1` | Fully implemented, tested                                   | `ui-v1` plus `<slot>` and `part`/`slot`/`exportparts`, for a web component's template. Opt-in `idPolicy: "keep-in-shadow"`. No `<style>`. |
+| `email-v1`              | **Scaffold** -- see [Known limitations](#known-limitations) | Restrictive table-layout-friendly subset; blocks relative auto-loading URLs; no `cid:`/VML/MSO-comment handling yet.                      |
 
 The built-ins are frozen and versioned (`name`, `version`); nothing mutates
 them. Register your own, or derive one from a built-in:
@@ -252,7 +254,7 @@ registerProfile(
 no dangerous elements, `on*`/`style` attributes, dangerous schemes, wildcard
 `data-*`, reserved custom-element names such as `font-face`);
 `unregisterProfile(name)` removes one you added. `PLAIN_TEXT_V1`, `ARTICLE_V1`,
-`UI_V1` and `EMAIL_V1` are exported **name strings** (use `getProfile(ARTICLE_V1)` for
+`UI_V1`, `EMAIL_V1` and `COMPONENT_TEMPLATE_V1` are exported **name strings** (use `getProfile(ARTICLE_V1)` for
 the definition).
 
 ## Adding a new profile
@@ -297,7 +299,7 @@ const sync = sanitizeToFragmentSync(untrustedHtml, { profile: "article-v1" });
 ```
 
 Same pipeline, same guarantees, same `SanitizationReport`; options are
-`{ profile, document?, maxInputLength?, baseUrl?, loadDOMPurify? }`. The sync
+`{ profile, document?, maxInputLength?, baseUrl?, idPolicy?, loadDOMPurify? }` (`idPolicy: "keep-in-shadow"` keeps author ids and is safe only if you insert the fragment into a shadow root; see [docs/profiles.md](docs/profiles.md#ids-inside-a-shadow-root)). The sync
 variant works only when the native engine exists or DOMPurify was already
 prepared; otherwise it throws `SANITIZER_NOT_READY` -- it fails closed. This is
 the entry point for template systems that need a sanitizer hook. The report
@@ -371,30 +373,31 @@ is not allowed, you get an `example-sandbox:error` event and no iframe.
 `.message`. `instanceof SafeFragmentError` also holds across the ESM and CJS
 builds.
 
-| Code                         | Surfaces as                      | Meaning                                                                          |
-| ---------------------------- | -------------------------------- | -------------------------------------------------------------------------------- |
-| `AMBIGUOUS_SOURCE`           | `reject`                         | More than one markup source while `strict`.                                      |
-| `NO_SOURCE`                  | `reject`                         | No `.html`, `<template>`, `src` or `content`.                                    |
-| `INVALID_SOURCE`             | `reject`, throw                  | The source is not a string.                                                      |
-| `SOURCE_TOO_LARGE`           | `reject`, throw                  | The source exceeds `maxInputLength`.                                             |
-| `UNKNOWN_PROFILE`            | `reject`, throw                  | The profile is missing or not registered.                                        |
-| `PROFILE_MISMATCH`           | throw (`registerProfile`)        | A `-vN` name suffix disagrees with `version`.                                    |
-| `INVALID_PROFILE`            | throw                            | A profile definition or `registerProfile`/`deriveProfile` arguments are invalid. |
-| `SANITIZE_FAILED`            | `reject`, throw                  | The engine threw while sanitizing.                                               |
-| `SANITIZER_UNAVAILABLE`      | `reject`, throw                  | DOMPurify is needed but cannot be loaded (the message says how to fix it).       |
-| `SANITIZER_NOT_READY`        | throw (`sanitizeToFragmentSync`) | No engine is ready synchronously; call `preloadSanitizer()`.                     |
-| `FETCH_DISABLED`             | `reject`                         | `src` used without enabling the fetch capability.                                |
-| `FETCH_ORIGIN_NOT_ALLOWED`   | `reject`                         | The URL's origin is neither the page's nor in `allowedOrigins`.                  |
-| `FETCH_REDIRECT_NOT_ALLOWED` | `reject`                         | With `followRedirects`, the final origin is not allowed.                         |
-| `FETCH_SIZE_EXCEEDED`        | `reject`                         | The body exceeds `maxBytes` (header or streamed).                                |
-| `FETCH_TIMEOUT`              | `reject`                         | The fetch, including reading the body, exceeded `timeoutMs`.                     |
-| `FETCH_FAILED`               | `reject`                         | Network failure (including mid-stream, and a refused redirect).                  |
-| `FETCH_NON_2XX`              | `reject`                         | The response was not ok.                                                         |
-| `FETCH_SUPERSEDED`           | `render()` result only           | A newer render overtook the fetch. No event.                                     |
-| `FETCH_ABORTED`              | `render()` result only           | `clear()`, disabling, disconnecting or page hide cut the fetch short. No event.  |
-| `DISABLED`                   | `reject`, `render()` result      | `render()` was called on a disabled element.                                     |
-| `RENDER_ABORTED`             | `reject`, `render()` result      | A `before-render` listener cancelled the render.                                 |
-| `UNSUPPORTED_ENVIRONMENT`    | throw                            | A `register*`/`sanitizeToFragment` call without a DOM.                           |
+| Code                         | Surfaces as                      | Meaning                                                                                      |
+| ---------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------- |
+| `AMBIGUOUS_SOURCE`           | `reject`                         | More than one markup source while `strict`.                                                  |
+| `NO_SOURCE`                  | `reject`                         | No `.html`, `<template>`, `src` or `content`.                                                |
+| `INVALID_SOURCE`             | `reject`, throw                  | The source is not a string.                                                                  |
+| `INVALID_OPTION`             | `reject`, throw                  | An option outside its allowed set, or `id-policy="keep-in-shadow"` without `scope="shadow"`. |
+| `SOURCE_TOO_LARGE`           | `reject`, throw                  | The source exceeds `maxInputLength`.                                                         |
+| `UNKNOWN_PROFILE`            | `reject`, throw                  | The profile is missing or not registered.                                                    |
+| `PROFILE_MISMATCH`           | throw (`registerProfile`)        | A `-vN` name suffix disagrees with `version`.                                                |
+| `INVALID_PROFILE`            | throw                            | A profile definition or `registerProfile`/`deriveProfile` arguments are invalid.             |
+| `SANITIZE_FAILED`            | `reject`, throw                  | The engine threw while sanitizing.                                                           |
+| `SANITIZER_UNAVAILABLE`      | `reject`, throw                  | DOMPurify is needed but cannot be loaded (the message says how to fix it).                   |
+| `SANITIZER_NOT_READY`        | throw (`sanitizeToFragmentSync`) | No engine is ready synchronously; call `preloadSanitizer()`.                                 |
+| `FETCH_DISABLED`             | `reject`                         | `src` used without enabling the fetch capability.                                            |
+| `FETCH_ORIGIN_NOT_ALLOWED`   | `reject`                         | The URL's origin is neither the page's nor in `allowedOrigins`.                              |
+| `FETCH_REDIRECT_NOT_ALLOWED` | `reject`                         | With `followRedirects`, the final origin is not allowed.                                     |
+| `FETCH_SIZE_EXCEEDED`        | `reject`                         | The body exceeds `maxBytes` (header or streamed).                                            |
+| `FETCH_TIMEOUT`              | `reject`                         | The fetch, including reading the body, exceeded `timeoutMs`.                                 |
+| `FETCH_FAILED`               | `reject`                         | Network failure (including mid-stream, and a refused redirect).                              |
+| `FETCH_NON_2XX`              | `reject`                         | The response was not ok.                                                                     |
+| `FETCH_SUPERSEDED`           | `render()` result only           | A newer render overtook the fetch. No event.                                                 |
+| `FETCH_ABORTED`              | `render()` result only           | `clear()`, disabling, disconnecting or page hide cut the fetch short. No event.              |
+| `DISABLED`                   | `reject`, `render()` result      | `render()` was called on a disabled element.                                                 |
+| `RENDER_ABORTED`             | `reject`, `render()` result      | A `before-render` listener cancelled the render.                                             |
+| `UNSUPPORTED_ENVIRONMENT`    | throw                            | A `register*`/`sanitizeToFragment` call without a DOM.                                       |
 
 ## Known limitations
 
@@ -404,7 +407,7 @@ launch in the maintainer's sandbox), including the adversarial XSS corpus and
 a benign-content corpus compared across both sanitization engines:
 
 - The sanitizer pipeline (both engines, `enforceProfile`, rebuild), the report, and the public `sanitizeToFragment` API.
-- `plain-text-v1`, `article-v1`, `ui-v1`; custom profiles via `registerProfile`.
+- `plain-text-v1`, `article-v1`, `ui-v1`, `component-template-v1`; custom profiles via `registerProfile`.
 - `<safe-fragment>`'s lifecycle, `render()` results, events, shadow/light scope, `loading="lazy"`.
 - The `src` fetch capability model.
 - `<example-sandbox>`, including a direct isolation-proof test and Trusted Types support.
@@ -417,6 +420,7 @@ Known gaps (each has an issue):
 - **The native Sanitizer API spec is still moving**; only Chromium (and, per CI, Firefox) ship `setHTML`, and Safari takes the DOMPurify path ([safe-fragment#4](https://github.com/johnhenry/safe-fragment/issues/4)).
 - **DOMPurify's cost is quadratic in removed nodes**: `maxInputLength` bounds it, it does not remove it ([safe-fragment#5](https://github.com/johnhenry/safe-fragment/issues/5)).
 - **`article-v1`/`ui-v1` keep relative `img src`**, a same-origin GET on render; opt in to `blockRelativeAutoLoadUrls` ([safe-fragment#6](https://github.com/johnhenry/safe-fragment/issues/6)).
+- **`<style>` is not supported** in any profile (dropped with its content): sanitizing CSS is a separate, larger security surface ([ADR 0006](docs/adr/0006-style-element-is-a-non-goal.md), [safe-fragment#11](https://github.com/johnhenry/safe-fragment/issues/11)). Keep component stylesheets outside the sanitized template; see [docs/profiles.md](docs/profiles.md#styles).
 - **`ui-v1` allows `class`**, which can match host selectors ([safe-fragment#7](https://github.com/johnhenry/safe-fragment/issues/7)).
 - **The native path's report cannot count the engine's own unconditional removals** (`<script>`, `<iframe>`, `on*` handlers, `javascript:` URLs; [safe-fragment#8](https://github.com/johnhenry/safe-fragment/issues/8), [ADR 0007](docs/adr/0007-no-gated-sink-in-the-native-report.md)): counting them needs a Trusted-Types-gated parse, which this package never makes, so sanitizing produces zero CSP violations. It lists everything the profile removed, and on DOMPurify the log also includes those baseline removals.
 - `loading="lazy"` falls back to eager rendering when `IntersectionObserver` is missing (rather than never rendering).

@@ -264,4 +264,39 @@ describe("enforceProfile: cross-engine value parity (X6)", () => {
     enforceProfile(frag, ARTICLE_V1_PROFILE);
     expect(frag.firstElementChild!.getAttribute("href")).toBe("my file.html");
   });
+
+  describe("clobberable `name` values (a derived profile may allow `name`; DOMPurify's SANITIZE_DOM is off)", () => {
+    const named = deriveProfile("ui-v1", {
+      name: "named-v1",
+      addElements: { img: ["name", "src"], slot: ["name"], "x-c": ["name"] },
+      customElements: [{ tag: "x-c", attributes: ["name"] }],
+    });
+
+    it("namespaces `name` on elements that create named properties, under every idPolicy", () => {
+      for (const idPolicy of [undefined, "keep-in-shadow"] as const) {
+        const frag = fragmentFromHtml('<img name="cookie" src="a.png"><form name="x"></form>');
+        enforceProfile(frag, named, { idPolicy });
+        expect(serialize(frag)).toContain('<img name="user-content-cookie"');
+      }
+    });
+
+    it("keeps `name` verbatim on <slot> and custom elements", () => {
+      const frag = fragmentFromHtml('<slot name="title"></slot><x-c name="location"></x-c>');
+      enforceProfile(frag, named);
+      expect(serialize(frag)).toBe('<slot name="title"></slot><x-c name="location"></x-c>');
+    });
+  });
+
+  it('idPolicy "keep-in-shadow" leaves ids and references alone; the default prefixes them', () => {
+    const input = '<label for="a" id="l">x</label><button id="a" aria-labelledby="l">b</button><a href="#a">j</a>';
+    const kept = fragmentFromHtml(input);
+    enforceProfile(kept, UI_V1_PROFILE, { idPolicy: "keep-in-shadow" });
+    expect(serialize(kept)).toContain('id="a"');
+    expect(serialize(kept)).toContain('href="#a"');
+    expect(serialize(kept)).not.toContain("user-content-");
+    const prefixed = fragmentFromHtml(input);
+    enforceProfile(prefixed, UI_V1_PROFILE);
+    expect(serialize(prefixed)).toContain('id="user-content-a"');
+    expect(serialize(prefixed)).toContain('href="#user-content-a"');
+  });
 });

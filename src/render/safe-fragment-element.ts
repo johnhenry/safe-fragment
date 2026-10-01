@@ -1,5 +1,5 @@
 import { SafeFragmentError, isSafeFragmentError, type SafeFragmentErrorCode } from "../errors.js";
-import type { RenderMode, RenderScope, BeforeRenderDetail, RejectDetail, RenderResult, SourceKind, ClearDetail } from "../types.js";
+import type { RenderMode, RenderScope, IdPolicy, BeforeRenderDetail, RejectDetail, RenderResult, SourceKind, ClearDetail } from "../types.js";
 import type { SafeFragmentElement } from "./element-types.js";
 import { getProfile } from "../policy/registry.js";
 import { sanitize, DEFAULT_MAX_INPUT_LENGTH } from "../sanitize/index.js";
@@ -8,7 +8,7 @@ import { fetchSource, ABORT_SUPERSEDED, type FetchCapability, DEFAULT_FETCH_CAPA
 const RENDERED_ROOT_MARKER = "data-safe-fragment-root";
 
 /** Properties a framework or script may have set on the element BEFORE it was upgraded; re-applied through the setters on first connect. */
-const UPGRADABLE_PROPERTIES = ["html", "source", "profile", "renderMode", "disabled", "scope", "loading", "strict", "debug"] as const;
+const UPGRADABLE_PROPERTIES = ["html", "source", "profile", "renderMode", "disabled", "scope", "idPolicy", "loading", "strict", "debug"] as const;
 
 export interface SafeFragmentElementDeps {
   fetchCapability: FetchCapability;
@@ -23,6 +23,7 @@ interface LastRender {
   value: unknown;
   profile: string;
   scope: RenderScope;
+  idPolicy: IdPolicy;
 }
 
 /** Enumerated attribute values are matched case-insensitively (HTML convention). */
@@ -46,7 +47,7 @@ export function createSafeFragmentElementClass(
 
   class SafeFragmentElementImpl extends HTMLElementBase {
     static get observedAttributes(): string[] {
-      return ["profile", "src", "render-mode", "scope", "content", "disabled", "strict", "loading"];
+      return ["profile", "src", "render-mode", "scope", "id-policy", "content", "disabled", "strict", "loading"];
     }
 
     #htmlProperty: unknown = null;
@@ -122,7 +123,7 @@ export function createSafeFragmentElementClass(
       // render() that was mid-fetch must not land content produced under a
       // profile/source/scope the element no longer claims (e.g. a looser
       // profile it was just tightened away from).
-      if (name === "profile" || name === "src" || name === "content" || name === "scope") this.#invalidateInFlight();
+      if (name === "profile" || name === "src" || name === "content" || name === "scope" || name === "id-policy") this.#invalidateInFlight();
 
       if (name === "scope") {
         // The stale wrapper (light child or shadow wrapper) must not linger
@@ -185,6 +186,14 @@ export function createSafeFragmentElementClass(
     }
     set scope(value: RenderScope) {
       this.setAttribute("scope", value);
+    }
+
+    /** Reflects `id-policy`: `"keep-in-shadow"` is honored only together with `scope="shadow"` (otherwise the render is rejected). Anything else is `"prefix"`. */
+    get idPolicy(): IdPolicy {
+      return enumValue(this.getAttribute("id-policy"), ["prefix", "keep-in-shadow"] as const, "prefix");
+    }
+    set idPolicy(value: IdPolicy) {
+      this.setAttribute("id-policy", value);
     }
 
     get loading(): "eager" | "lazy" {
@@ -320,6 +329,16 @@ export function createSafeFragmentElementClass(
       }
 
       const scope = this.scope;
+      const idPolicy = this.idPolicy;
+      if (idPolicy === "keep-in-shadow" && scope !== "shadow") {
+        // Fail closed: kept ids are only safe inside a shadow root. Never
+        // silently fall back to prefixing, which would hide the misconfiguration.
+        return this.#rejectRender(
+          new SafeFragmentError("INVALID_OPTION", 'id-policy="keep-in-shadow" requires scope="shadow"; kept ids are only safe inside a shadow root.', {
+            details: { idPolicy, scope },
+          }),
+        );
+      }
       let rawHtml: string;
       try {
         rawHtml =
@@ -337,7 +356,7 @@ export function createSafeFragmentElementClass(
 
       let sanitizeResult;
       try {
-        sanitizeResult = await sanitize(this.ownerDocument, rawHtml, profileDef, { truncated: false, maxInputLength });
+        sanitizeResult = await sanitize(this.ownerDocument, rawHtml, profileDef, { truncated: false, maxInputLength, idPolicy });
       } catch (error) {
         if (stale()) return this.#supersededResult();
         return this.#rejectRender(error);
@@ -348,7 +367,7 @@ export function createSafeFragmentElementClass(
       root.replaceChildren(sanitizeResult.fragment);
       this.#hasRenderedOnce = true;
       this.#root = root;
-      this.#lastRender = { kind: resolved.kind, value: resolved.value, profile: profileName, scope };
+      this.#lastRender = { kind: resolved.kind, value: resolved.value, profile: profileName, scope, idPolicy };
 
       this.#attachDelegationOnce();
 
@@ -452,7 +471,13 @@ export function createSafeFragmentElementClass(
       if (!last || !this.#root) return false;
       const resolved = this.#resolveSource();
       if (resolved.kind === "none" || resolved.kind === "ambiguous") return false;
-      return resolved.kind === last.kind && resolved.value === last.value && this.profile === last.profile && this.scope === last.scope;
+      return (
+        resolved.kind === last.kind &&
+        resolved.value === last.value &&
+        this.profile === last.profile &&
+        this.scope === last.scope &&
+        this.idPolicy === last.idPolicy
+      );
     }
 
     /**

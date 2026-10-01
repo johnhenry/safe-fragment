@@ -3,8 +3,9 @@ import { PLAIN_TEXT_V1_PROFILE } from "../../src/profiles/plain-text-v1.js";
 import { ARTICLE_V1_PROFILE } from "../../src/profiles/article-v1.js";
 import { UI_V1_PROFILE } from "../../src/profiles/ui-v1.js";
 import { EMAIL_V1_PROFILE } from "../../src/profiles/email-v1.js";
+import { COMPONENT_TEMPLATE_V1_PROFILE } from "../../src/profiles/component-template-v1.js";
 
-const ALL_PROFILES = [PLAIN_TEXT_V1_PROFILE, ARTICLE_V1_PROFILE, UI_V1_PROFILE, EMAIL_V1_PROFILE];
+const ALL_PROFILES = [PLAIN_TEXT_V1_PROFILE, ARTICLE_V1_PROFILE, UI_V1_PROFILE, EMAIL_V1_PROFILE, COMPONENT_TEMPLATE_V1_PROFILE];
 const DANGEROUS_SCHEMES = ["javascript:", "data:", "vbscript:", "file:"];
 const DANGEROUS_ELEMENTS = ["script", "iframe", "object", "embed", "form", "svg", "math", "style", "base", "meta", "link"];
 

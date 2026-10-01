@@ -1,6 +1,7 @@
 import type {
   RenderMode,
   RenderScope,
+  IdPolicy,
   RenderResult,
   SourceKind,
   BeforeRenderDetail,
@@ -34,6 +35,8 @@ export interface SafeFragmentElement extends HTMLElement {
   renderMode: RenderMode;
   /** Reflects `scope` (case-insensitive). Shadow DOM is not a security boundary. */
   scope: RenderScope;
+  /** Reflects `id-policy`. `"keep-in-shadow"` leaves author ids as written and is honored only with `scope="shadow"` (else the render rejects with `INVALID_OPTION`); default `"prefix"`. */
+  idPolicy: IdPolicy;
   /** Reflects `loading` (case-insensitive). `lazy` defers a `src` fetch until the element is near the viewport. */
   loading: "eager" | "lazy";
   disabled: boolean;

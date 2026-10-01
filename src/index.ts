@@ -34,6 +34,7 @@ export type { SafeFragmentErrorCode } from "./errors.js";
 export type {
   RenderMode,
   RenderScope,
+  IdPolicy,
   SanitizerEngineKind,
   SanitizationNote,
   SanitizationReport,
@@ -64,4 +65,5 @@ export const PLAIN_TEXT_V1 = "plain-text-v1";
 export const ARTICLE_V1 = "article-v1";
 export const UI_V1 = "ui-v1";
 export const EMAIL_V1 = "email-v1";
-export type BuiltInProfileName = typeof PLAIN_TEXT_V1 | typeof ARTICLE_V1 | typeof UI_V1 | typeof EMAIL_V1;
+export const COMPONENT_TEMPLATE_V1 = "component-template-v1";
+export type BuiltInProfileName = typeof PLAIN_TEXT_V1 | typeof ARTICLE_V1 | typeof UI_V1 | typeof EMAIL_V1 | typeof COMPONENT_TEMPLATE_V1;

@@ -12,6 +12,8 @@ sinks), [ADR 0002](adr/0002-native-sanitizer-with-dompurify-fallback.md)
 is styling encapsulation, not isolation) and
 [ADR 0004](adr/0004-disallowed-elements-unwrap-or-drop.md) (what happens to
 a disallowed element's content, identically in both engines) and
+[ADR 0005](adr/0005-component-templates-and-id-policy.md) (`component-template-v1`, `idPolicy: "keep-in-shadow"`),
+[ADR 0006](adr/0006-style-element-is-a-non-goal.md) (why `<style>` is not supported) and
 [ADR 0007](adr/0007-no-gated-sink-in-the-native-report.md) (no Trusted-Types-gated sink, even for the report).
 
 ## The pipeline, precisely
@@ -120,14 +122,31 @@ of it.
      a kept target is normalized to `_blank` and the anchor's `rel` is
      overwritten with `noopener noreferrer`. Unconditional; no profile flag.
    - **`<button>`** is forced to `type="button"`.
-   - **`id` namespacing** (DOM clobbering): every surviving `id` is prefixed
+   - **`id` namespacing** (DOM clobbering; opt out only with `idPolicy: "keep-in-shadow"`, below): every surviving `id` is prefixed
      with `user-content-`, and every in-fragment reference is rewritten
      consistently (`href="#x"`, `for`, `aria-controls`, `aria-labelledby`,
      `aria-describedby`, `aria-owns`, `headers`, `list`, ...). Authors can
      never create `window.scriptUrl`, shadow `document.getElementById("app")`,
      or collide with the host's ids; fragment links and `label for` keep
-     working inside the fragment. DOMPurify's own `SANITIZE_NAMED_PROPS` is off
-     so ids are prefixed exactly once.
+     working inside the fragment. DOMPurify's own `SANITIZE_NAMED_PROPS` and
+     `SANITIZE_DOM` are off so ids are prefixed exactly once and both engines
+     treat colliding values (`id="title"`, `<slot name="title">`) alike.
+     A `name` on an element that creates named properties (`img`, `form`,
+     `iframe`, `object`, `embed`, `a`, `area`, form controls; no built-in allows
+     it, a derived profile can) is prefixed the same way, under every policy.
+   - **`idPolicy: "keep-in-shadow"`** (opt-in, [ADR 0005](adr/0005-component-templates-and-id-policy.md)):
+     ids and references are left as written. Safe only when the fragment
+     lands in a shadow root, where named access on `window`/`document` cannot
+     see it. `<safe-fragment id-policy="keep-in-shadow">` rejects with
+     `INVALID_OPTION` unless `scope="shadow"`; `sanitizeToFragment(html, { idPolicy: "keep-in-shadow" })`
+     cannot see where you insert the result, so that guarantee is the caller's.
+     Residual risk: a kept id can collide with one the component looks up
+     itself, and the fragment is clobberable if you insert it into light DOM.
+     Everything else is still enforced. Do not combine it with a derived
+     profile that allows `form` controls or `name` for content you do not trust.
+   - **`<style>` is not supported**, in any profile: it is dropped with its
+     content ([ADR 0006](adr/0006-style-element-is-a-non-goal.md)). Keep
+     component stylesheets outside the sanitized template.
 8. **Rebuild** (`src/sanitize/rebuild.ts`). The enforced fragment is rebuilt
    from fresh `createElement`/`createTextNode` calls, copying only surviving
    attributes. A DOM node can carry hidden state no attribute check can see

@@ -1,4 +1,4 @@
-import type { SanitizationReport } from "../types.js";
+import type { SanitizationReport, IdPolicy } from "../types.js";
 import { SafeFragmentError } from "../errors.js";
 import { getProfile } from "../policy/registry.js";
 import { getGlobalDocument } from "../platform/environment.js";
@@ -14,6 +14,14 @@ export interface SanitizeToFragmentOptions {
   maxInputLength?: number;
   /** Base URL that protocol-relative URLs inherit their scheme from. Defaults to `document.baseURI`. */
   baseUrl?: string;
+  /**
+   * `"prefix"` (default) rewrites every id (and reference) to `user-content-*`.
+   * `"keep-in-shadow"` keeps ids as written and is safe ONLY if you insert the
+   * returned fragment into a shadow root: in light DOM or the document, a
+   * kept id can clobber `window`/`document` properties. Nothing here can check
+   * where you insert it; that guarantee is yours (docs/adr/0005).
+   */
+  idPolicy?: IdPolicy;
   /** DOMPurify loader for this call (see `registerSafeFragment({ loadDOMPurify })`). */
   loadDOMPurify?: DOMPurifyLoader;
 }
@@ -49,7 +57,12 @@ function resolve(options: SanitizeToFragmentOptions) {
  */
 export async function sanitizeToFragment(html: string, options: SanitizeToFragmentOptions): Promise<SanitizeToFragmentResult> {
   const { profile, doc } = resolve(options);
-  return sanitize(doc, html, profile, { maxInputLength: options.maxInputLength, baseUrl: options.baseUrl, loadDOMPurify: options.loadDOMPurify });
+  return sanitize(doc, html, profile, {
+    maxInputLength: options.maxInputLength,
+    baseUrl: options.baseUrl,
+    loadDOMPurify: options.loadDOMPurify,
+    idPolicy: options.idPolicy,
+  });
 }
 
 /**
@@ -61,5 +74,5 @@ export async function sanitizeToFragment(html: string, options: SanitizeToFragme
  */
 export function sanitizeToFragmentSync(html: string, options: SanitizeToFragmentOptions): SanitizeToFragmentResult {
   const { profile, doc } = resolve(options);
-  return sanitizeSync(doc, html, profile, { maxInputLength: options.maxInputLength, baseUrl: options.baseUrl });
+  return sanitizeSync(doc, html, profile, { maxInputLength: options.maxInputLength, baseUrl: options.baseUrl, idPolicy: options.idPolicy });
 }

@@ -1,6 +1,6 @@
 import type { ProfileDefinition } from "../policy/profile.js";
 import { matchCustomElement } from "../policy/profile.js";
-import type { SanitizationNote } from "../types.js";
+import type { SanitizationNote, IdPolicy } from "../types.js";
 import { checkUrl } from "../policy/url.js";
 import { DROP_SUBTREE_ELEMENTS, HTML_NAMESPACE } from "./dangerous.js";
 
@@ -205,9 +205,45 @@ function namespaceIds(el: Element): void {
   }
 }
 
+/**
+ * Elements whose `name` creates named properties on `document`/`window`
+ * (`img`, `form`, `embed`, `object`, `iframe`, `a`, `area`) or on their form
+ * (`input`, `button`, `select`, `textarea`, `fieldset`, `output`). No built-in
+ * profile allows `name` on any of them, but a derived profile can; the value is
+ * then namespaced like an id (DOMPurify's `SANITIZE_DOM`, which used to drop
+ * such values on one engine only, is off so both engines agree). `slot` and
+ * custom elements keep their `name` verbatim: neither is clobberable, and
+ * `<slot name="title">` must survive. Applies under every `idPolicy`.
+ */
+const CLOBBERABLE_NAME_ELEMENTS: ReadonlySet<string> = new Set([
+  "a",
+  "area",
+  "embed",
+  "form",
+  "iframe",
+  "img",
+  "object",
+  "input",
+  "button",
+  "select",
+  "textarea",
+  "fieldset",
+  "output",
+]);
+
+function namespaceName(el: Element, tag: string): void {
+  if (!CLOBBERABLE_NAME_ELEMENTS.has(tag)) return;
+  const name = el.getAttribute("name");
+  if (name === null) return;
+  if (name === "") el.removeAttribute("name");
+  else el.setAttribute("name", ID_PREFIX + name);
+}
+
 export interface EnforceOptions {
   /** URL of the document the fragment will be inserted into (`document.baseURI`); protocol-relative URLs inherit their scheme from it. */
   baseUrl?: string;
+  /** `"prefix"` (default) namespaces ids; `"keep-in-shadow"` leaves them (caller guarantees shadow-root insertion). See `IdPolicy`. */
+  idPolicy?: IdPolicy;
 }
 
 export interface EnforceResult {
@@ -325,7 +361,8 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
     // allows forms today, and `reset`/`submit` have no legitimate use in a
     // fragment that dispatches app actions via data-action.
     if (tag === "button") el.setAttribute("type", "button");
-    namespaceIds(el);
+    namespaceName(el, tag);
+    if (options.idPolicy !== "keep-in-shadow") namespaceIds(el);
   }
 
   return { removedElements, removedAttributes, rewrittenUrls };

@@ -1,5 +1,5 @@
 import type { ProfileDefinition } from "../policy/profile.js";
-import type { SanitizationReport, SanitizationNote } from "../types.js";
+import type { SanitizationReport, SanitizationNote, IdPolicy } from "../types.js";
 import { SafeFragmentError } from "../errors.js";
 import { hasNativeSanitizer } from "./capabilities.js";
 import { buildBaselineConfig } from "./config.js";
@@ -23,7 +23,23 @@ function assertInputWithinLimit(html: string, options: SanitizeOptions): void {
   }
 }
 
+function assertIdPolicy(options: SanitizeOptions): void {
+  const policy = options.idPolicy;
+  if (policy !== undefined && policy !== "prefix" && policy !== "keep-in-shadow") {
+    throw new SafeFragmentError("INVALID_OPTION", `idPolicy must be "prefix" or "keep-in-shadow", got ${JSON.stringify(policy)}.`, {
+      details: { idPolicy: policy },
+    });
+  }
+}
+
 export interface SanitizeOptions {
+  /**
+   * `"prefix"` (default): every id gets `user-content-`. `"keep-in-shadow"`:
+   * ids and references are left as written; ONLY valid when the caller
+   * inserts the fragment into a shadow root (ADR 0005). Any other value
+   * throws `INVALID_OPTION`.
+   */
+  idPolicy?: IdPolicy;
   /**
    * Largest accepted input, in UTF-16 code units (default 1,000,000). The
    * DOMPurify fallback removes nodes one at a time and is quadratic on
@@ -64,6 +80,7 @@ export interface SanitizeResult {
 export async function sanitize(doc: Document, html: string, profile: ProfileDefinition, options: SanitizeOptions = {}): Promise<SanitizeResult> {
   const start = nowMs();
   assertInputWithinLimit(html, options);
+  assertIdPolicy(options);
   if (profile.mode === "text") return textResult(doc, html, profile, options, start);
 
   const baseline = buildBaselineConfig(profile);
@@ -93,6 +110,7 @@ export async function sanitize(doc: Document, html: string, profile: ProfileDefi
 export function sanitizeSync(doc: Document, html: string, profile: ProfileDefinition, options: SanitizeOptions = {}): SanitizeResult {
   const start = nowMs();
   assertInputWithinLimit(html, options);
+  assertIdPolicy(options);
   if (profile.mode === "text") return textResult(doc, html, profile, options, start);
 
   const baseline = buildBaselineConfig(profile);
@@ -143,7 +161,7 @@ function finish(
   options: SanitizeOptions,
   start: number,
 ): SanitizeResult {
-  const enforced = enforceProfile(engineFragment, profile, { baseUrl: options.baseUrl ?? doc.baseURI });
+  const enforced = enforceProfile(engineFragment, profile, { baseUrl: options.baseUrl ?? doc.baseURI, idPolicy: options.idPolicy });
   const { fragment, length } = rebuildWithLength(engineFragment);
   return {
     fragment,

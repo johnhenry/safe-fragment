@@ -4,11 +4,12 @@ import { PLAIN_TEXT_V1_PROFILE } from "../profiles/plain-text-v1.js";
 import { ARTICLE_V1_PROFILE } from "../profiles/article-v1.js";
 import { UI_V1_PROFILE } from "../profiles/ui-v1.js";
 import { EMAIL_V1_PROFILE } from "../profiles/email-v1.js";
+import { COMPONENT_TEMPLATE_V1_PROFILE } from "../profiles/component-template-v1.js";
 import { DROP_SUBTREE_ELEMENTS } from "../sanitize/dangerous.js";
 import { SafeFragmentError } from "../errors.js";
 import { getSharedState } from "../shared-state.js";
 
-const BUILTINS: readonly ProfileDefinition[] = [PLAIN_TEXT_V1_PROFILE, ARTICLE_V1_PROFILE, UI_V1_PROFILE, EMAIL_V1_PROFILE];
+const BUILTINS: readonly ProfileDefinition[] = [PLAIN_TEXT_V1_PROFILE, ARTICLE_V1_PROFILE, UI_V1_PROFILE, EMAIL_V1_PROFILE, COMPONENT_TEMPLATE_V1_PROFILE];
 
 /** Process-wide registry, held in the shared (globalThis-keyed) state so the ESM and CJS builds see the same profiles. Created lazily; never touches a DOM global. */
 function registry(): Map<string, ProfileDefinition> {
