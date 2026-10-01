@@ -2,6 +2,15 @@ import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 
 /**
+ * Browsers to run. Default: all three engines (CI). Locally, narrow it with
+ * e.g. `SF_BROWSERS=chromium,webkit npm test` (Firefox may not launch in some sandboxes).
+ */
+const BROWSERS = (process.env.SF_BROWSERS ?? "chromium,webkit,firefox")
+  .split(",")
+  .map((b) => b.trim())
+  .filter(Boolean) as Array<"chromium" | "webkit" | "firefox">;
+
+/**
  * Separate config for test/examples/ only -- those tests import the built
  * examples' main.mjs modules (each one imports ../../dist/index.js), so
  * they only make sense after `npm run build`. Kept out of
@@ -17,7 +26,7 @@ export default defineConfig({
       enabled: true,
       provider: playwright(),
       headless: true,
-      instances: [{ browser: "chromium" }],
+      instances: BROWSERS.map((browser) => ({ browser })),
     },
   },
 });

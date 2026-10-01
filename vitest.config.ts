@@ -2,6 +2,15 @@ import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 
 /**
+ * Browsers to run. Default: all three engines (CI). Locally, narrow it with
+ * e.g. `SF_BROWSERS=chromium,webkit npm test` (Firefox may not launch in some sandboxes).
+ */
+const BROWSERS = (process.env.SF_BROWSERS ?? "chromium,webkit,firefox")
+  .split(",")
+  .map((b) => b.trim())
+  .filter(Boolean) as Array<"chromium" | "webkit" | "firefox">;
+
+/**
  * Real browser tests, not jsdom -- required for genuine confidence in
  * custom-element lifecycle, Shadow DOM, and sanitizer behavior (jsdom does
  * not implement the HTML Sanitizer API / `Element.prototype.setHTML` at
@@ -27,7 +36,7 @@ export default defineConfig({
       enabled: true,
       provider: playwright(),
       headless: true,
-      instances: [{ browser: "chromium" }],
+      instances: BROWSERS.map((browser) => ({ browser })),
     },
     coverage: {
       provider: "v8",

@@ -81,18 +81,24 @@ describe("sanitizeToFragment", () => {
 });
 
 describe("sanitizeToFragmentSync", () => {
-  it("works when the native engine exists, else fails closed with SANITIZER_NOT_READY", () => {
-    if (hasNativeSanitizer(document)) {
-      const { fragment } = sanitizeToFragmentSync("<p>sync<script>1</script></p>", { profile: "article-v1" });
+  it("works when the native engine exists, else fails closed with SANITIZER_NOT_READY until DOMPurify is ready", () => {
+    // A fresh iframe window: no DOMPurify instance has been created for it yet,
+    // whatever earlier tests loaded for the top window.
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    const idoc = iframe.contentDocument!;
+    if (hasNativeSanitizer(idoc)) {
+      const { fragment } = sanitizeToFragmentSync("<p>sync<script>1</script></p>", { profile: "article-v1", document: idoc });
       expect(fragment.firstElementChild!.innerHTML).toBe("sync");
     } else {
       try {
-        sanitizeToFragmentSync("<p>x</p>", { profile: "article-v1" });
+        sanitizeToFragmentSync("<p>x</p>", { profile: "article-v1", document: idoc });
         expect.unreachable();
       } catch (error) {
         expect(isSafeFragmentError(error) && error.code).toBe("SANITIZER_NOT_READY");
       }
     }
+    iframe.remove();
   });
 
   it("works after preloadSanitizer, matching the async result", async () => {

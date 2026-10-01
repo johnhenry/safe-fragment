@@ -29,6 +29,15 @@ async function settle(ms = 30): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+/** Polls until `predicate` holds (IntersectionObserver delivery timing differs between engines). */
+async function waitUntil(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+  const start = performance.now();
+  while (!predicate()) {
+    if (performance.now() - start > timeoutMs) throw new Error("waitUntil timed out");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 function waitFor(target: EventTarget, type: string): Promise<CustomEvent> {
   return new Promise((resolve) => target.addEventListener(type, (e) => resolve(e as CustomEvent), { once: true }));
 }
@@ -381,8 +390,8 @@ describe("DOM moves, lazy loading and teardown", () => {
     await settle(60);
     expect(fetches.calls).toHaveLength(0);
 
-    el.scrollIntoView();
-    await settle(100);
+    holder.scrollIntoView({ block: "center" }); // the (sized) holder: an empty inline custom element has no box to scroll to
+    await waitUntil(() => fetches.calls.length >= 1);
     expect(fetches.calls.map((c) => c.url)).toEqual([expect.stringContaining("/two")]);
 
     // Disconnect while the fetch is in flight, then reconnect (still in view).
@@ -390,8 +399,8 @@ describe("DOM moves, lazy loading and teardown", () => {
     await settle();
     expect(fetches.calls[0]!.signal!.aborted).toBe(true);
     holder.appendChild(el);
-    el.scrollIntoView();
-    await settle(100);
+    holder.scrollIntoView({ block: "center" }); // the (sized) holder: an empty inline custom element has no box to scroll to
+    await waitUntil(() => fetches.calls.length >= 2);
     expect(fetches.calls).toHaveLength(2);
     fetches.resolveAll("<p>after reconnect</p>");
     await settle(60);

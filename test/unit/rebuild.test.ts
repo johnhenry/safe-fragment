@@ -16,7 +16,7 @@ describe("rebuildFragment", () => {
     const frag = fragmentFromHtml('<span is="host-defined-ext">x</span>');
     const span = frag.firstElementChild!;
     span.removeAttribute("is"); // what an attribute allowlist does
-    expect(serialize(frag)).toContain('is="host-defined-ext"'); // ...but the serializer still emits the hidden is-value
+    // (Chromium's serializer still re-emits the hidden is-value at this point; WebKit's does not -- not asserted.)
     expect(serialize(rebuildFragment(frag))).toBe("<span>x</span>");
   });
 

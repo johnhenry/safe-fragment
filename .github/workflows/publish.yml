@@ -25,9 +25,11 @@ jobs:
     with:
       node-version: "26"
       gate-commands: |
-        npx playwright install --with-deps chromium
+        npx playwright install --with-deps
         npm run lint
         npm run typecheck
         npm run build
         npm test
+        npm run test:dist
+        npm run examples
     secrets: inherit
