@@ -104,6 +104,6 @@ registry, the DOMPurify loader and the per-window DOMPurify instance cache
 therefore live in one object on `globalThis` under `Symbol.for(...)`
 (`src/shared-state.ts`), created lazily inside functions (never at module top
 level). `SafeFragmentError` defines `Symbol.hasInstance` by shape so
-`instanceof` also holds across builds. `test/dist/dual-package.test.ts`
+`instanceof` also holds across builds. `test/package/dual-package.test.ts`
 loads both built files in Node and checks all of this. Do not add other
 module-level mutable state.
