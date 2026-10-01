@@ -47,8 +47,6 @@ export interface ProfileDefinition {
    * specific tags/attributes are kept; anything not registered is removed.
    */
   readonly allowCustomElements: boolean;
-  /** `target="_blank"` (or similar) anchors: attributes forced onto the element regardless of source markup, to close the `rel="opener"` tabnapping hole. */
-  readonly forceRelOnBlankTarget: boolean;
 }
 
 /** Application-registered custom element allowlist entry, added via `defineProfile`. */

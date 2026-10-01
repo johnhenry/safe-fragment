@@ -56,5 +56,4 @@ export const EMAIL_V1: ProfileDefinition = Object.freeze({
   allowDataAttributes: false,
   allowStyleAttribute: false,
   allowCustomElements: false,
-  forceRelOnBlankTarget: true,
 });

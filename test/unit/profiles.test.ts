@@ -50,8 +50,4 @@ describe("shipped profile shape invariants", () => {
     expect(PLAIN_TEXT_V1.allowCustomElements).toBe(false);
   });
 
-  it("article-v1 and ui-v1 force rel on target=_blank anchors", () => {
-    expect(ARTICLE_V1.forceRelOnBlankTarget).toBe(true);
-    expect(UI_V1.forceRelOnBlankTarget).toBe(true);
-  });
 });

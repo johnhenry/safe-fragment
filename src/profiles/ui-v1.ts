@@ -69,5 +69,4 @@ export const UI_V1: ProfileDefinition = Object.freeze({
   allowDataAttributes: true,
   allowStyleAttribute: false,
   allowCustomElements: true,
-  forceRelOnBlankTarget: true,
 });

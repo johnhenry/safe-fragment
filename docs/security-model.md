@@ -71,10 +71,12 @@ string  ──▶  engine (native setHTML | DOMPurify)  ──▶  enforceProfil
      platform `URL` parser, never regex** -- see that file's doc comment.
      A disallowed or unparseable URL means the attribute is removed
      entirely, not rewritten to something "safe-looking."
-   - `target="_blank"` anchors get `rel="noopener noreferrer"` forced
-     unconditionally (profiles that enable `forceRelOnBlankTarget`),
-     closing the reverse-tabnabbing hole regardless of what `rel` the
-     source markup requested.
+   - `target` is dropped unless its trimmed, lowercased value is
+     `_blank` (named contexts, `_top`, `_parent`, `_self` are removed);
+     a kept target is normalized to `_blank` and the anchor's `rel` is
+     overwritten with `noopener noreferrer`, closing the reverse-tabnabbing
+     hole regardless of what `rel` the source markup requested. This is
+     unconditional; there is no profile flag to turn it off.
    - HTML comments are stripped entirely (a `TreeWalker` pass), closing
      off comment-based markup-smuggling techniques against either engine.
 6. **Insertion.** Only after all of the above does the (now fully

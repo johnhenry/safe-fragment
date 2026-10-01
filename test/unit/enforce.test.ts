@@ -71,6 +71,35 @@ describe("enforceProfile", () => {
     expect(a.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
+  describe("anchor target hardening (reverse tabnabbing)", () => {
+    function anchor(html: string, profile = ARTICLE_V1): Element {
+      const frag = fragmentFromHtml(html);
+      enforceProfile(frag, profile, new Map());
+      return frag.firstElementChild!;
+    }
+
+    it("drops named browsing-context targets", () => {
+      const a = anchor('<a href="https://x.example/" target="victim-window">x</a>');
+      expect(a.hasAttribute("target")).toBe(false);
+    });
+
+    it.each(["_top", "_parent", "_self", "_TOP", ""])("drops target=%j", (t) => {
+      const a = anchor(`<a href="https://x.example/" target="${t}">x</a>`);
+      expect(a.hasAttribute("target")).toBe(false);
+    });
+
+    it.each(["_BLANK", " _blank", "_Blank\t", "_blank"])("normalizes target=%j to _blank and forces rel", (t) => {
+      const a = anchor(`<a href="https://x.example/" target="${t}" rel="opener">x</a>`);
+      expect(a.getAttribute("target")).toBe("_blank");
+      expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+    });
+
+    it("never lets attacker rel through when a target is kept (ui-v1)", () => {
+      const a = anchor('<a href="https://x.example/" target="_blank" rel="opener noreferrer">x</a>', UI_V1);
+      expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+    });
+  });
+
   it("strips the style attribute unconditionally (no v1 profile allows it)", () => {
     const frag = fragmentFromHtml('<p style="color:red">x</p>');
     enforceProfile(frag, ARTICLE_V1, new Map());

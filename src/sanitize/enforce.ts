@@ -117,9 +117,7 @@ export function enforceProfile(
       }
     }
 
-    if (profile.forceRelOnBlankTarget && tag === "a" && el.getAttribute("target") === "_blank") {
-      el.setAttribute("rel", "noopener noreferrer");
-    }
+    if (tag === "a") hardenAnchorTarget(el);
   }
 
   return { removedElements, removedAttributes, rewrittenUrls };
@@ -135,4 +133,24 @@ function stripComments(root: Node): void {
     current = walker.nextNode();
   }
   for (const c of comments) c.remove();
+}
+
+/**
+ * Reverse-tabnabbing defense. Only `_blank` survives as a `target` value
+ * (trimmed, ASCII-lowercased, then normalized to the canonical spelling);
+ * named browsing contexts (`target="victim-window"`) can navigate or
+ * spoof arbitrary other windows, and `_top`/`_parent`/`_self` let hostile
+ * content navigate the host page's own frame hierarchy. Whenever an anchor
+ * keeps a target, `rel` is overwritten with `noopener noreferrer` -- never
+ * merged with what the markup supplied, so `rel="opener"` cannot pass through.
+ */
+function hardenAnchorTarget(el: Element): void {
+  const raw = el.getAttribute("target");
+  if (raw === null) return;
+  if (raw.trim().toLowerCase() === "_blank") {
+    el.setAttribute("target", "_blank");
+    el.setAttribute("rel", "noopener noreferrer");
+  } else {
+    el.removeAttribute("target");
+  }
 }
