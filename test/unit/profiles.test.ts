@@ -43,6 +43,16 @@ describe("shipped profile shape invariants", () => {
     expect(PLAIN_TEXT_V1.urlSchemes).toHaveLength(0);
   });
 
+  it("data-* is an explicit allowlist, never a wildcard", () => {
+    for (const profile of ALL_PROFILES) {
+      for (const name of profile.allowedDataAttributes) {
+        expect(name.startsWith("data-")).toBe(true);
+        expect(name.includes("*")).toBe(false);
+      }
+    }
+    expect(UI_V1.allowedDataAttributes).toEqual(["data-action"]);
+  });
+
   it("only ui-v1 allows custom elements", () => {
     expect(UI_V1.allowCustomElements).toBe(true);
     expect(ARTICLE_V1.allowCustomElements).toBe(false);

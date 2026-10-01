@@ -41,6 +41,46 @@ describe("enforceProfile", () => {
     expect(div.getAttribute("data-action")).toBe("go");
   });
 
+  describe("ui-v1 data-* allowlist and button type", () => {
+    it("keeps only data-action; every other data-* (incl. framework handlers) is removed", () => {
+      const frag = fragmentFromHtml(
+        '<div data-action="go" data-foo="1" data-hx-on:click="evil()" data-hx-on--click="evil()" data-turbo-method="post" data-bs-toggle="x">x</div>',
+      );
+      const { removedAttributes } = enforceProfile(frag, UI_V1, new Map());
+      const div = frag.firstElementChild!;
+      expect([...div.attributes].map((a) => a.name)).toEqual(["data-action"]);
+      expect(removedAttributes.every((n) => n.reason === "data-attribute-not-allowlisted")).toBe(true);
+      expect(removedAttributes).toHaveLength(5);
+    });
+
+    it("article-v1 allows no data-* at all, not even data-action", () => {
+      const frag = fragmentFromHtml('<p data-action="go">x</p>');
+      enforceProfile(frag, ARTICLE_V1, new Map());
+      expect(frag.firstElementChild!.hasAttribute("data-action")).toBe(false);
+    });
+
+    it("a profile-level allowedDataAttributes entry is honored exactly (no prefix matching)", () => {
+      const custom = { ...UI_V1, allowedDataAttributes: ["data-action", "data-id"] };
+      const frag = fragmentFromHtml('<div data-id="1" data-identity="2">x</div>');
+      enforceProfile(frag, custom, new Map());
+      const div = frag.firstElementChild!;
+      expect(div.hasAttribute("data-id")).toBe(true);
+      expect(div.hasAttribute("data-identity")).toBe(false);
+    });
+
+    it.each([
+      "<button>x</button>",
+      '<button type="submit">x</button>',
+      '<button type="reset">x</button>',
+      '<button type="SUBMIT">x</button>',
+      '<button type="button">x</button>',
+    ])("forces type=button on %s", (html) => {
+      const frag = fragmentFromHtml(html);
+      enforceProfile(frag, UI_V1, new Map());
+      expect(frag.firstElementChild!.getAttribute("type")).toBe("button");
+    });
+  });
+
   it("always strips on* attributes even on allowed elements, regardless of profile config", () => {
     const frag = fragmentFromHtml('<div onclick="evil()" onmouseover="evil()">x</div>');
     enforceProfile(frag, UI_V1, new Map());

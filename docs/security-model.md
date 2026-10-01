@@ -63,8 +63,9 @@ string  ──▶  engine (native setHTML | DOMPurify)  ──▶  enforceProfil
        mistakenly lists it. This is a backstop, not the primary defense.
      - `style` is removed unless the profile's `allowStyleAttribute` is
        `true` (no shipped v1 profile sets this).
-     - `data-*` attributes are kept only when `allowDataAttributes` is
-       `true` for the profile (only `ui-v1`).
+     - `data-*` attributes are kept only when named in the profile's
+       `allowedDataAttributes` (`ui-v1`: `data-action` only; no wildcard).
+     - `<button>` is forced to `type="button"`.
    - For URL-valued attributes (`profile.urlAttributes`, typically
      `href`/`src`/`cite`), validates the value with `checkUrl()`
      (`src/policy/url.ts`) against `profile.urlSchemes`. **This uses the

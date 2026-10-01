@@ -175,8 +175,10 @@ export function enforceProfile(
       }
 
       if (name.startsWith("data-")) {
-        if (!profile.allowDataAttributes) {
-          removedAttributes.push({ tag, attribute: name, reason: "data-attributes-disallowed", snippet: snippet(attr.value) });
+        // Only profile-level allowedDataAttributes (or a name the element's own
+        // attribute list names explicitly) survives; no data-* wildcard.
+        if (!profile.allowedDataAttributes.includes(name) && !allowedAttrs.includes(name)) {
+          removedAttributes.push({ tag, attribute: name, reason: "data-attribute-not-allowlisted", snippet: snippet(attr.value) });
           el.removeAttribute(attr.name);
         }
         continue;
@@ -198,6 +200,10 @@ export function enforceProfile(
     }
 
     if (tag === "a") hardenAnchorTarget(el);
+    // A <button> defaults to type=submit; force the inert kind. No profile
+    // allows forms today, and `reset`/`submit` have no legitimate use in a
+    // fragment that dispatches app actions via data-action.
+    if (tag === "button") el.setAttribute("type", "button");
     namespaceIds(el);
   }
 

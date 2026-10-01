@@ -1,12 +1,19 @@
 import type { BaselineConfig } from "./config.js";
 import { SafeFragmentError } from "../errors.js";
 
+/**
+ * The current (spec-aligned) SanitizerConfig key names. The pre-2024
+ * draft names (`allowComments`, `allowCustomElements`, `allowUnknownMarkup`)
+ * are silently ignored by current Chromium, so a config using them looks
+ * strict while enforcing nothing -- do not use them.
+ */
 interface NativeSanitizerConfig {
   elements?: string[];
+  removeElements?: string[];
+  replaceWithChildrenElements?: string[];
   attributes?: string[];
-  allowComments?: boolean;
-  allowCustomElements?: boolean;
-  allowUnknownMarkup?: boolean;
+  comments?: boolean;
+  dataAttributes?: boolean;
 }
 
 interface SetHTMLCapableElement extends Element {
@@ -32,9 +39,8 @@ export function sanitizeWithNative(doc: Document, html: string, baseline: Baseli
   const config: NativeSanitizerConfig = {
     elements: baseline.allowedElements,
     attributes: baseline.allowedAttributes,
-    allowComments: false,
-    allowCustomElements: baseline.allowCustomElements,
-    allowUnknownMarkup: false,
+    comments: false,
+    dataAttributes: false,
   };
 
   try {

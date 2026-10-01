@@ -53,7 +53,7 @@ export const EMAIL_V1: ProfileDefinition = Object.freeze({
   }),
   urlAttributes: Object.freeze(["href", "src"]),
   urlSchemes: SAFE_DEFAULT_URL_SCHEMES,
-  allowDataAttributes: false,
+  allowedDataAttributes: Object.freeze([]),
   allowStyleAttribute: false,
   allowCustomElements: false,
 });

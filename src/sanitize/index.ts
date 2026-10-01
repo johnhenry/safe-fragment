@@ -72,7 +72,7 @@ export async function sanitize(
     fragment = sanitizeWithNative(doc, html, baseline);
     engine = "native";
   } else {
-    fragment = await sanitizeWithDOMPurify(doc, html, baseline, profile.allowDataAttributes);
+    fragment = await sanitizeWithDOMPurify(doc, html, baseline);
     engine = "dompurify";
   }
 

@@ -36,8 +36,14 @@ export interface ProfileDefinition {
    * `"vbscript:"`, or `"file:"` in a shipped profile.
    */
   readonly urlSchemes: readonly string[];
-  /** Whether `data-*` attributes are allowed on any allowed element (beyond ones explicitly listed). */
-  readonly allowDataAttributes: boolean;
+  /**
+   * The only `data-*` attributes allowed on any allowed element, as full
+   * lowercase names (e.g. `"data-action"`). There is deliberately no
+   * wildcard: framework handler attributes (`data-hx-on:click`,
+   * `data-turbo-*`, `data-bs-*`, Alpine/htmx-style hooks) are code-by-another-name
+   * and must never ride through on a blanket `data-*` allowance.
+   */
+  readonly allowedDataAttributes: readonly string[];
   /** Whether the `style` attribute is allowed at all. Every v1 profile ships `false`; see docs/adr. */
   readonly allowStyleAttribute: boolean;
   /**

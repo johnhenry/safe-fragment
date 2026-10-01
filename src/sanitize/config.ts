@@ -36,16 +36,9 @@ export function buildBaselineConfig(profile: ProfileDefinition, customElements: 
     }
   }
 
-  if (profile.allowDataAttributes) {
-    // Neither the Sanitizer API's `allowAttributes` list nor DOMPurify's
-    // ALLOWED_ATTR accepts a wildcard pattern like "data-*" -- both want
-    // literal attribute names. `enforceProfile` is what actually allows
-    // arbitrary `data-*` names (via a real `startsWith("data-")` check on
-    // the live attribute, not a config string), so this first pass simply
-    // does not try to enumerate them; anything dropped here that
-    // `enforceProfile` would have kept is a false negative in the engine's
-    // OWN pass only, not in the final output.
-  }
+  // `data-*` names are literal allowlist entries in both engines (neither
+  // accepts a wildcard); `ALLOW_DATA_ATTR` / `dataAttributes` stay off.
+  for (const name of profile.allowedDataAttributes) allowedAttributes.add(name);
 
   return {
     allowedElements: [...allowedElements],

@@ -3,10 +3,10 @@ import { SAFE_DEFAULT_URL_SCHEMES } from "../policy/url.js";
 
 const GLOBAL_ATTRS = Object.freeze(["id", "lang", "dir", "title", "class"]);
 // `data-action` is the event-delegation hook `<safe-fragment>` wires up for
-// ui-v1 (see src/render/action-delegation.ts); every other `data-*`
-// attribute is allowed too (allowDataAttributes: true below) since
-// application UI markup routinely carries its own data attributes for CSS
-// hooks/JS state that the *application*, not this library, reads.
+// ui-v1 (see the click delegation in src/render/safe-fragment-element.ts).
+// It is the ONLY data-* attribute ui-v1 allows (profile-level
+// `allowedDataAttributes`); no wildcard, because framework handler
+// attributes such as `data-hx-on:click` are code by another name.
 const INTERACTIVE_ATTRS = Object.freeze([
   ...GLOBAL_ATTRS,
   "data-action",
@@ -78,7 +78,7 @@ export const UI_V1: ProfileDefinition = Object.freeze({
   }),
   urlAttributes: Object.freeze(["href", "src"]),
   urlSchemes: SAFE_DEFAULT_URL_SCHEMES,
-  allowDataAttributes: true,
+  allowedDataAttributes: Object.freeze(["data-action"]),
   allowStyleAttribute: false,
   allowCustomElements: true,
 });

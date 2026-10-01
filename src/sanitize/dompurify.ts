@@ -26,7 +26,7 @@ type DOMPurifyFactory = (window: Window) => DOMPurifyLike;
  * happens here, inside a function that itself is only ever invoked with a
  * real `Document`/`Window` at render time.
  */
-export async function sanitizeWithDOMPurify(doc: Document, html: string, baseline: BaselineConfig, allowDataAttr: boolean): Promise<DocumentFragment> {
+export async function sanitizeWithDOMPurify(doc: Document, html: string, baseline: BaselineConfig): Promise<DocumentFragment> {
   const win = doc.defaultView;
   if (!win) {
     throw new SafeFragmentError("SANITIZER_UNAVAILABLE", "DOMPurify fallback requires a Document with a defaultView (Window); none is available.");
@@ -52,7 +52,7 @@ export async function sanitizeWithDOMPurify(doc: Document, html: string, baselin
       // The locked allowlist -- see module doc comment above.
       ALLOWED_TAGS: baseline.allowedElements,
       ALLOWED_ATTR: baseline.allowedAttributes,
-      ALLOW_DATA_ATTR: allowDataAttr,
+      ALLOW_DATA_ATTR: false,
       ALLOW_UNKNOWN_PROTOCOLS: false,
       ALLOW_SELF_CLOSE_IN_ATTR: false,
       WHOLE_DOCUMENT: false,

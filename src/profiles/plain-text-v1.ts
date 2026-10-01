@@ -13,7 +13,7 @@ export const PLAIN_TEXT_V1: ProfileDefinition = Object.freeze({
   elements: Object.freeze({}),
   urlAttributes: Object.freeze([]),
   urlSchemes: Object.freeze([]),
-  allowDataAttributes: false,
+  allowedDataAttributes: Object.freeze([]),
   allowStyleAttribute: false,
   allowCustomElements: false,
 });

@@ -52,8 +52,10 @@ defineProfile("ui-v1", {
 
 Any custom element tag not registered this way is removed entirely
 (subtree included) -- see docs/security-model.md's `enforceProfile`
-walkthrough. `data-*` attributes are allowed on any allowed element
-(`allowDataAttributes: true`); `data-action` specifically is read by
+walkthrough. The only `data-*` attribute allowed is `data-action` (the profile's
+`allowedDataAttributes`; there is no wildcard, because framework handler
+attributes like `data-hx-on:click` are code by another name). `<button>`s are
+always forced to `type="button"`. `data-action` is read by
 `<safe-fragment>`'s click delegation and dispatched as a
 `safe-fragment:action` event, letting markup _request_ behavior without
 ever supplying code.
