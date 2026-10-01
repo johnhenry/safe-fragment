@@ -113,6 +113,13 @@ export function conformance(root: Node, profile: ProfileDefinition, opts: Confor
         if (lower === "id" && opts.idPolicy !== "keep-in-shadow" && !attr.value.startsWith(ID_PREFIX)) out.push(`<${tag}> unprefixed id`);
         if (lower === "name" && opts.idPolicy !== "keep-in-shadow" && CLOBBERABLE.has(tag) && !attr.value.startsWith(ID_PREFIX))
           out.push(`<${tag}> unprefixed name`);
+        if (lower === "class") {
+          const allow = profile.allowedClasses ?? [];
+          for (const token of attr.value.split(/[\t\n\f\r ]+/)) {
+            const ok = allow.some((entry) => (entry.endsWith("*") ? token.startsWith(entry.slice(0, -1)) : token === entry));
+            if (!ok) out.push(`<${tag}> class token ${JSON.stringify(token)} not in allowedClasses`);
+          }
+        }
         if (scriptLike(attr.value)) out.push(`<${tag}> ${name} carries a script/data scheme value`);
         if (breaksOut(attr.value)) out.push(`<${tag}> ${name} value can close a markup context`);
         if (attr.value !== attr.value.trim() && lower !== "value") out.push(`<${tag}> untrimmed ${name}`);

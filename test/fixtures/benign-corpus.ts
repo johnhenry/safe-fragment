@@ -172,9 +172,9 @@ export const BENIGN_CORPUS: BenignFixture[] = [
   {
     name: "ui-v1 button with action",
     profile: "ui-v1",
-    input: '<button type="button" data-action="save" class="primary" aria-label="Save">Save</button>',
+    input: '<button type="button" data-action="save" aria-label="Save">Save</button>',
     text: ["Save"],
-    selectors: ["button[type='button'][data-action='save'].primary[aria-label='Save']"],
+    selectors: ["button[type='button'][data-action='save'][aria-label='Save']"],
   },
   {
     name: "ui-v1 submit button is forced inert",
@@ -186,10 +186,9 @@ export const BENIGN_CORPUS: BenignFixture[] = [
   {
     name: "ui-v1 layout containers",
     profile: "ui-v1",
-    input:
-      '<header class="h"><nav><a href="/a" role="link">A</a></nav></header><main><section class="s"><article>x</article></section></main><footer>f</footer>',
+    input: '<header><nav><a href="/a" role="link">A</a></nav></header><main><section><article>x</article></section></main><footer>f</footer>',
     text: ["A", "x", "f"],
-    selectors: ["header.h nav a[role='link']", "main section.s article", "footer"],
+    selectors: ["header nav a[role='link']", "main section article", "footer"],
   },
   {
     name: "ui-v1 label for button",

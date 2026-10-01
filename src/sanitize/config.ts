@@ -49,7 +49,7 @@ export function buildBaselineConfig(profile: ProfileDefinition): BaselineConfig 
   for (const name of profile.allowedDataAttributes) allowedAttributes.add(name);
 
   return {
-    dropSubtreeElements: [...DROP_SUBTREE_ELEMENTS],
+    dropSubtreeElements: [...new Set([...DROP_SUBTREE_ELEMENTS, ...(profile.dropElements ?? [])])],
     allowedElements: [...allowedElements],
     allowedAttributes: [...allowedAttributes],
     allowCustomElements: profile.customElements.length > 0,

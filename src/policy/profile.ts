@@ -72,6 +72,56 @@ export interface ProfileDefinition {
    * risk to your users or derive a profile that sets it).
    */
   readonly blockRelativeAutoLoadUrls: boolean;
+  /**
+   * Which `class` tokens may survive, for elements whose attribute list names
+   * `class`. Each entry is an exact token (`"btn"`) or a prefix ending in a single
+   * `*` (`"user-*"`); matching is case-sensitive. Absent or empty (the default, and
+   * `ui-v1`'s) means NO class token survives: a class from untrusted markup can
+   * match the host page's selectors (`.admin`, `.hidden`), so a profile names the
+   * classes its content may use. A lone `*` is refused. ADR 0011, safe-fragment#7.
+   */
+  readonly allowedClasses?: readonly string[];
+  /**
+   * Extra element names dropped WITH their subtree when they are not allowed, on
+   * top of the shared list (`src/sanitize/dangerous.ts`), identically in both
+   * engines and `enforceProfile`. For containers whose text must not be promoted
+   * into the document by unwrapping, e.g. email's Office/VML namespaces
+   * (`v:shape`, `o:officedocumentsettings`, `xml`). Lowercase; may contain `:`.
+   */
+  readonly dropElements?: readonly string[];
+  /**
+   * `"static"` allows a strict subset of SVG (shapes, paths, text, gradients,
+   * `use` of a same-fragment `#id`): no `foreignObject`, `script`, `style`,
+   * animation, `image`, filters, event attributes or external references. Every
+   * URL attribute goes through `checkUrl`, paint/reference values accept only
+   * `url(#id)` of this fragment. Opt-in; absent means every SVG element is
+   * dropped. ADR 0010, safe-fragment#3.
+   */
+  readonly svg?: "static";
+  /** `"presentation"` allows MathML presentation elements only (no `annotation-xml`, `semantics`, `maction`, `mglyph`, `href`). Opt-in. ADR 0010. */
+  readonly mathml?: "presentation";
+}
+
+/** True for a valid `allowedClasses` entry: a bare token, or a non-empty token prefix followed by one `*`. */
+export function isValidClassEntry(entry: unknown): entry is string {
+  if (typeof entry !== "string" || entry === "") return false;
+  const star = entry.indexOf("*");
+  if (star !== -1 && (star !== entry.length - 1 || entry.length === 1)) return false;
+  for (let i = 0; i < entry.length; i++) {
+    const c = entry.charCodeAt(i);
+    if (c <= 0x20 || c === 0x7f || c === 0xa0) return false; // no whitespace or control characters in a class token
+  }
+  return true;
+}
+
+/** Whether `token` is permitted by the profile's `allowedClasses`. */
+export function isAllowedClassToken(profile: Pick<ProfileDefinition, "allowedClasses">, token: string): boolean {
+  const list = profile.allowedClasses;
+  if (!list) return false;
+  for (const entry of list) {
+    if (entry.endsWith("*") ? token.startsWith(entry.slice(0, -1)) : token === entry) return true;
+  }
+  return false;
 }
 
 /** One custom-element allowlist entry of a profile. */

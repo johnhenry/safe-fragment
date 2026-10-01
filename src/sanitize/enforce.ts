@@ -1,5 +1,5 @@
 import type { ProfileDefinition } from "../policy/profile.js";
-import { matchCustomElement } from "../policy/profile.js";
+import { isAllowedClassToken, matchCustomElement } from "../policy/profile.js";
 import type { SanitizationNote, IdPolicy } from "../types.js";
 import { checkUrl, hasScriptScheme } from "../policy/url.js";
 import { DROP_SUBTREE_ELEMENTS, HTML_NAMESPACE } from "./dangerous.js";
@@ -351,7 +351,7 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
     const allowedAttrs = builtinAttrs ?? customEntry?.attributes;
 
     if (allowedAttrs === undefined) {
-      if (DROP_SUBTREE.has(tag)) {
+      if (DROP_SUBTREE.has(tag) || (profile.dropElements?.includes(tag) ?? false)) {
         removedElements.push({ tag, reason: "element-dropped:dangerous-container" });
         el.remove();
       } else {
@@ -408,6 +408,19 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
       if (!allowedAttrs.includes(name)) {
         removedAttributes.push({ tag, attribute: name, reason: "attribute-not-in-profile", snippet: snippet(attr.value) });
         el.removeAttribute(attr.name);
+        continue;
+      }
+
+      if (name === "class") {
+        // Class tokens match the host page's selectors; only the profile's allowedClasses survive (safe-fragment#7, ADR 0011).
+        const tokens = splitTokens(attr.value);
+        const kept = tokens.filter((t) => isAllowedClassToken(profile, t));
+        if (kept.length !== tokens.length) {
+          const dropped = tokens.filter((t) => !isAllowedClassToken(profile, t));
+          removedAttributes.push({ tag, attribute: name, reason: "class-not-allowlisted", snippet: snippet(dropped.join(" ")) });
+        }
+        if (kept.length === 0) el.removeAttribute(attr.name);
+        else if (kept.length !== tokens.length || kept.join(" ") !== attr.value) el.setAttribute(attr.name, kept.join(" "));
         continue;
       }
 

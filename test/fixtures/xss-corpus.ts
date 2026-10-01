@@ -287,4 +287,12 @@ export const XSS_CORPUS: XssFixture[] = [
     forbiddenSubstrings: ["<frameset", "<frame"],
     survives: ["before", "after"],
   },
+  {
+    name: "F5 class tokens that match host selectors (#7): ui-v1 ships no allowed classes",
+    profile: "ui-v1",
+    input: '<div class="admin-panel hidden btn-danger modal-backdrop" id="x">overlay</div>',
+    forbiddenSubstrings: ["admin-panel", "hidden", "btn-danger", "modal-backdrop"],
+    forbiddenAttributes: [{ selector: "div", attribute: "class" }],
+    survives: ["overlay"],
+  },
 ];

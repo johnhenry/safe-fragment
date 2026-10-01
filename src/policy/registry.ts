@@ -1,5 +1,5 @@
 import type { ProfileDefinition, CustomElementAllowlistEntry } from "./profile.js";
-import { isValidCustomElementName, isValidCustomElementPattern, RESERVED_CUSTOM_ELEMENT_NAMES } from "./profile.js";
+import { isValidClassEntry, isValidCustomElementName, isValidCustomElementPattern, RESERVED_CUSTOM_ELEMENT_NAMES } from "./profile.js";
 import { PLAIN_TEXT_V1_PROFILE } from "../profiles/plain-text-v1.js";
 import { ARTICLE_V1_PROFILE } from "../profiles/article-v1.js";
 import { UI_V1_PROFILE } from "../profiles/ui-v1.js";
@@ -106,6 +106,29 @@ function validateAndFreeze(definition: ProfileDefinition): ProfileDefinition {
     }
   }
 
+  const allowedClasses = def.allowedClasses;
+  if (allowedClasses !== undefined && (!Array.isArray(allowedClasses) || !allowedClasses.every(isValidClassEntry))) {
+    throw invalid(
+      `profile "${name}": "allowedClasses" must be an array of class tokens or prefixes (e.g. "btn", "user-*"): no whitespace, at most one trailing "*", never a bare "*".`,
+    );
+  }
+  const dropElements = def.dropElements;
+  if (dropElements !== undefined) {
+    if (!isStringArray(dropElements)) throw invalid(`profile "${name}": "dropElements" must be an array of lowercase element names.`);
+    for (const tag of dropElements) {
+      if (
+        tag === "" ||
+        tag !== tag.toLowerCase() ||
+        tag.includes("*") ||
+        [...tag].some((ch) => ch <= " " || ch === "<" || ch === ">" || ch === "/" || ch === '"' || ch === "'")
+      ) {
+        throw invalid(`profile "${name}": dropElements entry "${tag}" is not a valid lowercase element name.`);
+      }
+    }
+  }
+  if (def.svg !== undefined && def.svg !== "static") throw invalid(`profile "${name}": "svg" must be "static" or absent.`);
+  if (def.mathml !== undefined && def.mathml !== "presentation") throw invalid(`profile "${name}": "mathml" must be "presentation" or absent.`);
+
   const elements: Record<string, readonly string[]> = {};
   for (const [tag, attrs] of Object.entries(def.elements as Record<string, unknown>)) {
     if (tag !== tag.toLowerCase()) throw invalid(`profile "${name}": element "${tag}" must be lowercase.`);
@@ -151,6 +174,10 @@ function validateAndFreeze(definition: ProfileDefinition): ProfileDefinition {
     allowStyleAttribute: false,
     customElements: Object.freeze(customElements),
     blockRelativeAutoLoadUrls: def.blockRelativeAutoLoadUrls,
+    allowedClasses: Object.freeze([...((allowedClasses as readonly string[] | undefined) ?? [])]),
+    dropElements: Object.freeze([...((dropElements as readonly string[] | undefined) ?? [])]),
+    ...(def.svg ? { svg: def.svg as "static" } : {}),
+    ...(def.mathml ? { mathml: def.mathml as "presentation" } : {}),
   });
 }
 
@@ -199,6 +226,19 @@ export interface DeriveProfileOverrides {
   /** Custom elements to allow (exact tags or `prefix-*` patterns); REPLACES the base's list. */
   customElements?: readonly CustomElementAllowlistEntry[];
   blockRelativeAutoLoadUrls?: boolean;
+  /** Class tokens (exact, or `prefix*`) content may use; REPLACES the base's list. See `ProfileDefinition.allowedClasses`. */
+  allowedClasses?: readonly string[];
+  /** Extra drop-with-subtree element names; REPLACES the base's list. */
+  dropElements?: readonly string[];
+  /** Opt in to static SVG (`"static"`), or `null` to turn the base's off. */
+  svg?: "static" | null;
+  /** Opt in to MathML presentation elements (`"presentation"`), or `null` to turn the base's off. */
+  mathml?: "presentation" | null;
+}
+
+function pick<K extends string, V>(key: K, override: V | null | undefined, base: V | undefined): Partial<Record<K, V>> {
+  const value = override === undefined ? base : override === null ? undefined : override;
+  return value === undefined ? {} : ({ [key]: value } as Record<K, V>);
 }
 
 /**
@@ -225,6 +265,10 @@ export function deriveProfile(base: string | ProfileDefinition, overrides: Deriv
     allowStyleAttribute: false,
     customElements: overrides.customElements ?? baseDef.customElements,
     blockRelativeAutoLoadUrls: overrides.blockRelativeAutoLoadUrls ?? baseDef.blockRelativeAutoLoadUrls,
+    allowedClasses: overrides.allowedClasses ?? baseDef.allowedClasses,
+    dropElements: overrides.dropElements ?? baseDef.dropElements,
+    ...pick("svg", overrides.svg, baseDef.svg),
+    ...pick("mathml", overrides.mathml, baseDef.mathml),
   };
 }
 
