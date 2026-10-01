@@ -89,6 +89,7 @@ export const BENIGN_CORPUS: BenignFixture[] = [
     input: '<blockquote cite="https://example.com/q">Quote<footer>x</footer></blockquote>',
     text: ["Quote"],
     selectors: ["blockquote[cite]"],
+    absent: ["footer"], // article-v1 has no <footer>: unwrapped, text kept
   },
   {
     name: "code and pre blocks keep whitespace",

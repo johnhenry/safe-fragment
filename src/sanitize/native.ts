@@ -106,6 +106,10 @@ function diffInventories(input: Inventory | undefined, output: Inventory): { ele
     for (let i = 0; i < missing && elements.length < MAX_ENGINE_NOTES; i++) elements.push({ tag, reason: "removed-by-engine:native" });
   }
   for (const [key, n] of input.attributes) {
+    // An attribute of an element that itself went is not a removed attribute
+    // (DOMPurify never reports it either): skip any tag that lost an element.
+    const tagName = key.slice(0, key.indexOf("\u0000"));
+    if ((output.elements.get(tagName) ?? 0) < (input.elements.get(tagName) ?? 0)) continue;
     const missing = n - (output.attributes.get(key) ?? 0);
     const [tag, attribute] = key.split("\u0000") as [string, string];
     for (let i = 0; i < missing && attributes.length < MAX_ENGINE_NOTES; i++) attributes.push({ tag, attribute, reason: "removed-by-engine:native" });

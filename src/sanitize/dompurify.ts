@@ -130,6 +130,25 @@ export interface DOMPurifyOutput {
 }
 
 /**
+ * Whether an entry of DOMPurify's `removed` log is a node the INPUT contained.
+ * The log also records DOMPurify's own scaffolding: with `FORCE_BODY` it
+ * prepends an empty `<remove></remove>` sentinel to the markup (the first
+ * thing removed, always log entry 0), and it sanitizes the parsed `<body>`
+ * wrapper itself (not in any profile's allowlist, so "removed"). Neither is
+ * input; comments and text nodes are not elements and are never reported.
+ * The parser never yields a `<body>`/`<html>`/`<head>` element from body
+ * context markup, so skipping those names cannot hide an author's element.
+ * (safe-fragment#9)
+ */
+function isGenuineRemoval(node: Node, logIndex: number): boolean {
+  if (node.nodeType !== 1) return false;
+  const name = node.nodeName.toLowerCase();
+  if (name === "body" || name === "html" || name === "head") return false;
+  if (logIndex === 0 && name === "remove" && node.childNodes.length === 0 && (node as Element).attributes.length === 0) return false;
+  return true;
+}
+
+/**
  * Sanitizes `html` via DOMPurify, configured with an explicit, closed
  * allowlist derived from the profile -- **never** DOMPurify's out-of-the-box
  * defaults (which allow a large general-purpose HTML tag/attribute set).
@@ -186,14 +205,16 @@ export function sanitizeWithDOMPurify(purify: DOMPurifyLike, html: string, basel
 
   const removedElements: SanitizationNote[] = [];
   const removedAttributes: SanitizationNote[] = [];
-  for (const entry of purify.removed ?? []) {
+  const log = purify.removed ?? [];
+  for (let i = 0; i < log.length; i++) {
+    const entry = log[i]!;
     if (entry.attribute) {
       removedAttributes.push({
         tag: (entry.from?.nodeName ?? "").toLowerCase(),
         attribute: entry.attribute.name.toLowerCase(),
         reason: "removed-by-engine:dompurify",
       });
-    } else if (entry.element) {
+    } else if (entry.element && isGenuineRemoval(entry.element, i)) {
       removedElements.push({ tag: entry.element.nodeName.toLowerCase(), reason: "removed-by-engine:dompurify" });
     }
   }
