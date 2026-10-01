@@ -6,7 +6,7 @@ import { buildBaselineConfig } from "./config.js";
 import { sanitizeWithNative } from "./native.js";
 import { sanitizeWithDOMPurify, getDOMPurify, peekDOMPurify, type DOMPurifyLoader } from "./dompurify.js";
 import { enforceProfile } from "./enforce.js";
-import { rebuildFragment } from "./rebuild.js";
+import { rebuildWithLength } from "./rebuild.js";
 
 /** Default cap on the markup string handed to a sanitizer (UTF-16 code units); see `SanitizeOptions.maxInputLength`. */
 export const DEFAULT_MAX_INPUT_LENGTH = 1_000_000;
@@ -144,7 +144,7 @@ function finish(
   start: number,
 ): SanitizeResult {
   const enforced = enforceProfile(engineFragment, profile, { baseUrl: options.baseUrl ?? doc.baseURI });
-  const fragment = rebuildFragment(engineFragment);
+  const { fragment, length } = rebuildWithLength(engineFragment);
   return {
     fragment,
     report: {
@@ -155,7 +155,7 @@ function finish(
       rewrittenUrls: enforced.rewrittenUrls,
       durationMs: nowMs() - start,
       inputLength: html.length,
-      outputLength: serializedLength(fragment),
+      outputLength: length,
       truncated: options.truncated ?? false,
     },
   };
@@ -163,13 +163,6 @@ function finish(
 
 function nowMs(): number {
   return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
-}
-
-function serializedLength(fragment: DocumentFragment): number {
-  const doc = fragment.ownerDocument;
-  const container = doc.createElement("div");
-  container.appendChild(fragment.cloneNode(true));
-  return container.innerHTML.length;
 }
 
 export { SafeFragmentError };

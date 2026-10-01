@@ -43,7 +43,7 @@ export interface SanitizationReport {
   durationMs: number;
   /** Length (UTF-16 code units) of the raw input string. */
   inputLength: number;
-  /** Length (UTF-16 code units) of the serialized sanitized output. */
+  /** APPROXIMATE length (UTF-16 code units) of the sanitized output's serialization: text plus tag/attribute overhead, no entity escaping. Cheap to compute; use it for rough sizing only. */
   outputLength: number;
   /** True if the input was truncated before sanitization (e.g. `src` fetch size cap). */
   truncated: boolean;

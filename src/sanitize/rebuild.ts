@@ -18,6 +18,17 @@ const TEXT_NODE = 3;
  * overflow the call stack.
  */
 export function rebuildFragment(source: DocumentFragment): DocumentFragment {
+  return rebuildWithLength(source).fragment;
+}
+
+/**
+ * Like `rebuildFragment`, and also returns an APPROXIMATE serialized length
+ * accumulated during the same walk (text length plus tag/attribute overhead,
+ * no entity escaping). Serializing the whole output just to measure it
+ * doubled the cost of every render for a number that is informational only.
+ */
+export function rebuildWithLength(source: DocumentFragment): { fragment: DocumentFragment; length: number } {
+  let length = 0;
   const doc = source.ownerDocument;
   const out = doc.createDocumentFragment();
   const stack: Array<{ from: Node; to: Node }> = [{ from: source, to: out }];
@@ -26,13 +37,17 @@ export function rebuildFragment(source: DocumentFragment): DocumentFragment {
     const { from, to } = stack.pop() as { from: Node; to: Node };
     for (const child of from.childNodes) {
       if (child.nodeType === TEXT_NODE) {
-        to.appendChild(doc.createTextNode(child.nodeValue ?? ""));
+        const text = child.nodeValue ?? "";
+        length += text.length;
+        to.appendChild(doc.createTextNode(text));
       } else if (child.nodeType === ELEMENT_NODE) {
         const el = child as Element;
         const copy = doc.createElement(el.localName);
+        length += el.localName.length * 2 + 5; // <tag></tag>
         for (const attr of el.attributes) {
           try {
             copy.setAttribute(attr.name, attr.value);
+            length += attr.name.length + attr.value.length + 4; // ` name=""`
           } catch {
             // An attribute name the DOM refuses to set cannot be a valid allowlisted name; drop it.
           }
@@ -43,5 +58,5 @@ export function rebuildFragment(source: DocumentFragment): DocumentFragment {
       // Anything else (comments, processing instructions) was already stripped; never copied.
     }
   }
-  return out;
+  return { fragment: out, length };
 }
