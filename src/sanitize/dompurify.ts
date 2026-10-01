@@ -96,14 +96,14 @@ export async function getDOMPurify(win: Window, loader?: DOMPurifyLoader): Promi
   if (purify.isSupported === false) {
     throw new SafeFragmentError("SANITIZER_UNAVAILABLE", "DOMPurify reports that this window is not supported (missing DOM features).");
   }
-  // Custom elements: DOMPurify's own "basic custom element" test rejects
+  // Custom elements and profile drop-elements: DOMPurify's own "basic custom element" test rejects
   // valid names with consecutive hyphens (`ui--card`), so exact tags and
   // prefix patterns are allowed through its documented element hook instead,
   // using the profile of the call currently in progress.
   purify.addHook("uponSanitizeElement", (node, data) => {
     const check = activeTagChecks.get(purify);
     const d = data as unknown as { tagName?: string; allowedTags?: Record<string, boolean> } | undefined;
-    if (check && d?.tagName && d.allowedTags && d.tagName.includes("-") && check(d.tagName)) d.allowedTags[d.tagName] = true;
+    if (check && d?.tagName && d.allowedTags && check(d.tagName)) d.allowedTags[d.tagName] = true;
     void node;
   });
   // DOMPurify force-removes (subtree and all) any element carrying `is=`; the
@@ -180,7 +180,12 @@ function isGenuineRemoval(node: Node, seenSentinel: { done: boolean }): boolean 
  */
 export function sanitizeWithDOMPurify(purify: DOMPurifyLike, html: string, baseline: BaselineConfig): DOMPurifyOutput {
   let fragment: DocumentFragment;
-  if (baseline.allowCustomElements) activeTagChecks.set(purify, baseline.customElementTagCheck);
+  // Tags DOMPurify must leave alone for enforceProfile to judge: the profile's custom elements, and the elements it
+  // drops with their subtree (`dropElements`, e.g. email's v:*): DOMPurify would otherwise unwrap those and leak their text.
+  activeTagChecks.set(
+    purify,
+    (tag) => (baseline.allowCustomElements && tag.includes("-") && baseline.customElementTagCheck(tag)) || baseline.profileDropElementCheck(tag),
+  );
   try {
     fragment = purify.sanitize(PARSE_PREFIX + html, {
       // The locked allowlist -- see function doc comment above.

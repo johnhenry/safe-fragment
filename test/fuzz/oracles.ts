@@ -68,6 +68,16 @@ function breaksOut(value: string): boolean {
   return ["style", "script", "title", "xmp", "textarea", "noscript", "iframe", "noembed", "noframes"].some((n) => v.includes(`</${n}`));
 }
 
+/** A value a `resolveCid` may legitimately have put into an image-loading attribute: blob:, or a raster data: URL. */
+function resolvedCidUrlOk(profile: ProfileDefinition, tag: string, attr: string, value: string): boolean {
+  if (!profile.urlSchemes.includes("cid:")) return false;
+  if (!((tag === "img" && attr === "src") || attr === "background")) return false;
+  if (/[\u0000-\u0020\u007f-\u00a0]/.test(value)) return false;
+  if (value.startsWith("blob:")) return true;
+  const m = /^data:(image\/(?:png|jpeg|gif|webp|avif|bmp))[;,]/i.exec(value);
+  return m !== null;
+}
+
 export interface ConformanceOptions {
   baseUrl: string;
   idPolicy?: "prefix" | "keep-in-shadow";
@@ -120,7 +130,7 @@ export function conformance(root: Node, profile: ProfileDefinition, opts: Confor
             if (!ok) out.push(`<${tag}> class token ${JSON.stringify(token)} not in allowedClasses`);
           }
         }
-        if (scriptLike(attr.value)) out.push(`<${tag}> ${name} carries a script/data scheme value`);
+        if (scriptLike(attr.value) && !resolvedCidUrlOk(profile, tag, lower, attr.value)) out.push(`<${tag}> ${name} carries a script/data scheme value`);
         if (breaksOut(attr.value)) out.push(`<${tag}> ${name} value can close a markup context`);
         if (attr.value !== attr.value.trim() && lower !== "value") out.push(`<${tag}> untrimmed ${name}`);
       }
@@ -129,7 +139,10 @@ export function conformance(root: Node, profile: ProfileDefinition, opts: Confor
         const candidates = isSrcset ? [...parseSrcsetUrls(attr.value), attr.value] : lower === "ping" ? attr.value.split(/\s+/) : [attr.value];
         for (const c of candidates) {
           const verdict = checkUrl(c, profile.urlSchemes, opts.baseUrl);
-          if (!verdict.allowed) out.push(`<${tag}> ${name}=${JSON.stringify(c)} scheme ${verdict.scheme} not allowed`);
+          if (!verdict.allowed && resolvedCidUrlOk(profile, tag, lower, c)) continue;
+          if (verdict.allowed && verdict.scheme === "cid:")
+            out.push(`<${tag}> ${name}=${JSON.stringify(c)} cid: must never survive (it is resolved or removed)`);
+          else if (!verdict.allowed) out.push(`<${tag}> ${name}=${JSON.stringify(c)} scheme ${verdict.scheme} not allowed`);
           else if (
             verdict.scheme === "relative" &&
             profile.blockRelativeAutoLoadUrls &&
@@ -149,6 +162,22 @@ export function conformance(root: Node, profile: ProfileDefinition, opts: Confor
     if (opts.extra) out.push(...opts.extra(el, tag));
   }
   return out;
+}
+
+/**
+ * A `resolveCid` answer (a `blob:` or `data:image/...` URL) is the caller's own value, written into the output
+ * by design; it is not something the profile's schemes would let through again. Before a fixpoint check the
+ * tree is rewritten to a plain https URL in those places so the check is about everything else.
+ */
+export function neutralizeResolvedUrls(fragment: DocumentFragment, profile: ProfileDefinition): DocumentFragment {
+  const copy = fragment.cloneNode(true) as DocumentFragment;
+  for (const el of copy.querySelectorAll("*")) {
+    for (const attr of [...el.attributes]) {
+      const name = attr.name.toLowerCase();
+      if (resolvedCidUrlOk(profile, el.localName, name, attr.value)) el.setAttribute(attr.name, "https://cdn.example/resolved");
+    }
+  }
+  return copy;
 }
 
 /** Serializes a fragment with a container in the fragment's own (inert) document. */

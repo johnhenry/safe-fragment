@@ -54,6 +54,7 @@ export type { DOMPurifyFactory, DOMPurifyLoader, DOMPurifyLike } from "./sanitiz
 
 export { checkUrl, SAFE_DEFAULT_URL_SCHEMES, RELATIVE_URL_SCHEME } from "./policy/url.js";
 export type { UrlCheckResult } from "./policy/url.js";
+export type { CidResolver } from "./policy/cid.js";
 
 export type { FetchCapability } from "./source/fetch.js";
 export { DEFAULT_FETCH_CAPABILITY } from "./source/fetch.js";

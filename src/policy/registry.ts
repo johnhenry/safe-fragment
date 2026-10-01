@@ -114,15 +114,13 @@ function validateAndFreeze(definition: ProfileDefinition): ProfileDefinition {
   }
   const dropElements = def.dropElements;
   if (dropElements !== undefined) {
-    if (!isStringArray(dropElements)) throw invalid(`profile "${name}": "dropElements" must be an array of lowercase element names.`);
+    if (!isStringArray(dropElements)) throw invalid(`profile "${name}": "dropElements" must be an array of lowercase element names or "prefix*" patterns.`);
     for (const tag of dropElements) {
-      if (
-        tag === "" ||
-        tag !== tag.toLowerCase() ||
-        tag.includes("*") ||
-        [...tag].some((ch) => ch <= " " || ch === "<" || ch === ">" || ch === "/" || ch === '"' || ch === "'")
-      ) {
-        throw invalid(`profile "${name}": dropElements entry "${tag}" is not a valid lowercase element name.`);
+      const star = tag.indexOf("*");
+      const badStar = star !== -1 && (star !== tag.length - 1 || tag.length === 1);
+      const badChar = [...tag].some((ch) => ch <= " " || ch === "<" || ch === ">" || ch === "/" || ch === '"' || ch === "'");
+      if (tag === "" || tag !== tag.toLowerCase() || badStar || badChar) {
+        throw invalid(`profile "${name}": dropElements entry "${tag}" is not a valid lowercase element name or "prefix*" pattern.`);
       }
     }
   }

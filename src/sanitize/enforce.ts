@@ -2,10 +2,20 @@ import type { ProfileDefinition } from "../policy/profile.js";
 import { isAllowedClassToken, matchCustomElement } from "../policy/profile.js";
 import type { SanitizationNote, IdPolicy } from "../types.js";
 import { checkUrl, hasScriptScheme } from "../policy/url.js";
+import { enforceForeignElement } from "./enforce-foreign.js";
+import { extractContentId, isSafeResolvedUrl, type CidResolver } from "../policy/cid.js";
 import { DROP_SUBTREE_ELEMENTS, HTML_NAMESPACE } from "./dangerous.js";
 
 const SNIPPET_MAX_LENGTH = 60;
 const DROP_SUBTREE: ReadonlySet<string> = new Set(DROP_SUBTREE_ELEMENTS);
+
+/** True when `tag` is named by a profile's `dropElements`: an exact name, or a `prefix*` entry. */
+export function isProfileDropElement(profile: Pick<ProfileDefinition, "dropElements">, tag: string): boolean {
+  for (const entry of profile.dropElements ?? []) {
+    if (entry.endsWith("*") ? tag.startsWith(entry.slice(0, -1)) : tag === entry) return true;
+  }
+  return false;
+}
 
 /**
  * Attribute names that are never permitted on any element, regardless of
@@ -107,7 +117,13 @@ function splitOnWhitespace(value: string): string[] {
   return out;
 }
 
+/** Where a `cid:` URL may be resolved: an attribute that loads an image of the message's own parts. */
+function cidEligible(tag: string, name: string): boolean {
+  return (tag === "img" && name === "src") || name === "background";
+}
+
 function checkUrlAttribute(
+  tag: string,
   name: string,
   value: string,
   profile: ProfileDefinition,
@@ -132,6 +148,7 @@ function checkUrlAttribute(
   for (const candidate of candidates) {
     const result = checkUrl(candidate, profile.urlSchemes, baseUrl);
     if (!result.allowed) return { allowed: false, reason: `disallowed-url-scheme:${result.scheme}` };
+    if (result.scheme === "cid:" && (multi !== null || !cidEligible(tag, name))) return { allowed: false, reason: "cid-not-allowed-here" };
     if (profile.blockRelativeAutoLoadUrls && AUTO_LOAD_ATTRS.has(name) && result.scheme === "relative") {
       return { allowed: false, reason: "relative-url-on-auto-load" };
     }
@@ -294,7 +311,36 @@ function namespaceName(el: Element, tag: string): void {
   else el.setAttribute("name", ID_PREFIX + name);
 }
 
+/** Replaces a `cid:` attribute with the resolver's (validated) answer, or removes it. Never fetches; the library has no access to the message. */
+function resolveCidAttribute(
+  el: Element,
+  attrName: string,
+  contentId: string,
+  original: string,
+  tag: string,
+  resolver: CidResolver | undefined,
+  notes: SanitizationNote[],
+): void {
+  let resolved: unknown;
+  if (resolver) {
+    try {
+      resolved = resolver(contentId);
+    } catch {
+      resolved = undefined;
+    }
+  }
+  if (isSafeResolvedUrl(resolved)) {
+    el.setAttribute(attrName, resolved);
+    notes.push({ tag, attribute: attrName.toLowerCase(), reason: "cid-resolved", snippet: snippet(original) });
+  } else {
+    el.removeAttribute(attrName);
+    notes.push({ tag, attribute: attrName.toLowerCase(), reason: "cid-unresolved", snippet: snippet(original) });
+  }
+}
+
 export interface EnforceOptions {
+  /** Maps a `cid:` content-id to a URL to render instead; without it every `cid:` URL is removed. See `CidResolver`. */
+  resolveCid?: CidResolver;
   /** URL of the document the fragment will be inserted into (`document.baseURI`); protocol-relative URLs inherit their scheme from it. */
   baseUrl?: string;
   /** `"prefix"` (default) namespaces ids; `"keep-in-shadow"` leaves them (caller guarantees shadow-root insertion). See `IdPolicy`. */
@@ -337,11 +383,29 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
 
     const tag = el.tagName.toLowerCase();
 
-    // Foreign (SVG/MathML) elements and raw-text/embedding containers are
-    // dropped with their whole subtree, whatever their tag name (an SVG
-    // <a> or <title> must never be mistaken for the HTML one).
+    // Elements outside the HTML namespace (SVG/MathML): dropped with their subtree unless the profile opts in to
+    // static SVG / presentation MathML, in which case the foreign-content enforcer (enforce-foreign.ts, ADR 0010) decides.
     if (el.namespaceURI !== HTML_NAMESPACE) {
-      removedElements.push({ tag, reason: "element-dropped:foreign-namespace" });
+      enforceForeignElement(el, {
+        profile,
+        baseUrl: options.baseUrl,
+        keepIds: options.idPolicy === "keep-in-shadow",
+        idPrefix: ID_PREFIX,
+        removedElements,
+        removedAttributes,
+        rewrittenUrls,
+        snippet,
+        splitTokens,
+        breaksOut: attributeValueBreaksOut,
+      });
+      continue;
+    }
+
+    // An HTML element can only sit in foreign content through an integration point, which the foreign enforcer
+    // already restricts to text; if one is there anyway (a parser quirk, an engine bug) it goes with its subtree.
+    const parentNs = el.parentElement?.namespaceURI;
+    if (parentNs && parentNs !== HTML_NAMESPACE) {
+      removedElements.push({ tag, reason: "element-dropped:foreign-misplaced" });
       el.remove();
       continue;
     }
@@ -351,7 +415,7 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
     const allowedAttrs = builtinAttrs ?? customEntry?.attributes;
 
     if (allowedAttrs === undefined) {
-      if (DROP_SUBTREE.has(tag) || (profile.dropElements?.includes(tag) ?? false)) {
+      if (DROP_SUBTREE.has(tag) || isProfileDropElement(profile, tag)) {
         removedElements.push({ tag, reason: "element-dropped:dangerous-container" });
         el.remove();
       } else {
@@ -425,10 +489,13 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
       }
 
       if (URL_VALUED_ATTRS.has(name) || profile.urlAttributes.includes(name)) {
-        const verdict = checkUrlAttribute(name, attr.value, profile, options.baseUrl);
+        const verdict = checkUrlAttribute(tag, name, attr.value, profile, options.baseUrl);
         if (!verdict.allowed) {
           rewrittenUrls.push({ tag, attribute: name, reason: verdict.reason, snippet: snippet(attr.value) });
           el.removeAttribute(attr.name);
+        } else {
+          const cid = extractContentId(attr.value);
+          if (cid !== undefined) resolveCidAttribute(el, attr.name, cid, attr.value, tag, options.resolveCid, rewrittenUrls);
         }
       } else if (hasScriptScheme(attr.value)) {
         // Not a URL attribute, but nothing in the output may carry a script/data: value for a reader to trust (F2).

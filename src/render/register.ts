@@ -3,6 +3,7 @@ import { createSafeFragmentElementClass } from "./safe-fragment-element.js";
 import { DEFAULT_FETCH_CAPABILITY, type FetchCapability } from "../source/fetch.js";
 import { SafeFragmentError } from "../errors.js";
 import { setDOMPurifyLoader, type DOMPurifyLoader } from "../sanitize/dompurify.js";
+import type { CidResolver } from "../policy/cid.js";
 
 export interface RegisterSafeFragmentOptions {
   /** Custom element tag name to register under. Defaults to `"safe-fragment"`; override only for naming collisions/testing. */
@@ -18,6 +19,8 @@ export interface RegisterSafeFragmentOptions {
   loadDOMPurify?: DOMPurifyLoader;
   /** Longest markup string accepted per render, in UTF-16 code units (default 1,000,000); longer sources reject with `SOURCE_TOO_LARGE`. */
   maxInputLength?: number;
+  /** Resolves `cid:` URLs for profiles that allow them (email-v1). The library never fetches them; see `CidResolver`. */
+  resolveCid?: CidResolver;
   /** Explicit `Document`/`CustomElementRegistry`/`HTMLElement` overrides -- mainly for tests that construct their own realm. Defaults to the ambient globals. */
   document?: Document;
   customElementRegistry?: CustomElementRegistry;
@@ -60,7 +63,11 @@ export function registerSafeFragment(options: RegisterSafeFragmentOptions = {}):
     allowedOrigins: options.fetch?.allowedOrigins ?? DEFAULT_FETCH_CAPABILITY.allowedOrigins,
   };
 
-  const ElementClass = createSafeFragmentElementClass(HTMLElementBase, { fetchCapability, maxInputLength: options.maxInputLength });
+  const ElementClass = createSafeFragmentElementClass(HTMLElementBase, {
+    fetchCapability,
+    maxInputLength: options.maxInputLength,
+    resolveCid: options.resolveCid,
+  });
   registry.define(tagName, ElementClass);
 }
 

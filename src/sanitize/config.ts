@@ -1,6 +1,8 @@
 import { DROP_SUBTREE_ELEMENTS } from "./dangerous.js";
 import type { ProfileDefinition } from "../policy/profile.js";
 import { matchCustomElement } from "../policy/profile.js";
+import { isProfileDropElement } from "./enforce.js";
+import { MATHML_ELEMENTS, SVG_ELEMENTS, XLINK_NAMESPACE } from "../policy/foreign.js";
 
 /**
  * Builds a baseline structural allowlist (element + attribute names only --
@@ -22,9 +24,13 @@ export interface BaselineConfig {
   dropSubtreeElements: string[];
   allowedElements: string[];
   allowedAttributes: string[];
+  /** The native engine's attribute allowlist: `allowedAttributes` plus the DOM's case-sensitive foreign spellings (`viewBox`) and the namespaced `xlink:href`. */
+  nativeAttributes: Array<string | { name: string; namespace: string | null }>;
   allowCustomElements: boolean;
   /** DOMPurify `tagNameCheck`: which custom-element tags (exact registered names) survive. */
   customElementTagCheck: (tag: string) => boolean;
+  /** Tags the profile drops with their subtree in `enforceProfile` (`dropElements`); DOMPurify must not unwrap them first or their text would leak. */
+  profileDropElementCheck: (tag: string) => boolean;
 }
 
 export function buildBaselineConfig(profile: ProfileDefinition): BaselineConfig {
@@ -48,11 +54,36 @@ export function buildBaselineConfig(profile: ProfileDefinition): BaselineConfig 
   // accepts a wildcard); `ALLOW_DATA_ATTR` / `dataAttributes` stay off.
   for (const name of profile.allowedDataAttributes) allowedAttributes.add(name);
 
+  // Opt-in foreign content (ADR 0010): DOMPurify compares lowercased names, the native engine compares the DOM's
+  // case-sensitive ones, so both spellings are listed there. enforceProfile validates every value either way.
+  const nativeExtra = new Set<string>();
+  let xlink = false;
+  for (const [enabled, table] of [
+    [profile.svg === "static", SVG_ELEMENTS],
+    [profile.mathml === "presentation", MATHML_ELEMENTS],
+  ] as const) {
+    if (!enabled) continue;
+    for (const [tag, attrMap] of Object.entries(table)) {
+      allowedElements.add(tag.toLowerCase());
+      for (const name of Object.keys(attrMap)) {
+        if (name === "xlink:href") {
+          xlink = true;
+          allowedAttributes.add("xlink:href");
+          continue;
+        }
+        allowedAttributes.add(name.toLowerCase());
+        nativeExtra.add(name);
+      }
+    }
+  }
+
   return {
-    dropSubtreeElements: [...new Set([...DROP_SUBTREE_ELEMENTS, ...(profile.dropElements ?? [])])],
+    nativeAttributes: [...allowedAttributes, ...nativeExtra, ...(xlink ? [{ name: "href", namespace: XLINK_NAMESPACE }] : [])],
+    dropSubtreeElements: [...DROP_SUBTREE_ELEMENTS],
     allowedElements: [...allowedElements],
     allowedAttributes: [...allowedAttributes],
     allowCustomElements: profile.customElements.length > 0,
     customElementTagCheck: (tag: string) => matchCustomElement(profile, tag) !== undefined,
+    profileDropElementCheck: (tag: string) => isProfileDropElement(profile, tag),
   };
 }

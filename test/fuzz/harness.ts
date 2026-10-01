@@ -3,7 +3,7 @@ import { sanitize } from "../../src/sanitize/index.js";
 import type { ProfileDefinition } from "../../src/policy/profile.js";
 import type { DOMPurifyFactory } from "../../src/sanitize/dompurify.js";
 import { hasNativeSanitizer } from "../../src/sanitize/capabilities.js";
-import { conformance, createProbe, normalize, reparse, serialize, type ConformanceOptions, type Probe } from "./oracles.js";
+import { conformance, createProbe, neutralizeResolvedUrls, normalize, reparse, serialize, type ConformanceOptions, type Probe } from "./oracles.js";
 import { divergenceReason } from "./divergences.js";
 
 export type Engine = "native" | "dompurify";
@@ -35,8 +35,35 @@ export async function makeEnv(extra?: Env["conformanceOptions"]): Promise<Env> {
   return { doc: document, engines, probe: await createProbe(document), conformanceOptions: extra, stats: { cases: 0, drift: 0, divergences: new Map() } };
 }
 
+/**
+ * A deliberately hostile cid resolver: depending on the content-id it answers with a safe URL, with every
+ * kind of unsafe one, echoes the attacker-chosen id back, throws, or answers with a non-string.
+ */
+export function fuzzResolveCid(cid: string): string | undefined {
+  switch (cid.length % 9) {
+    case 0:
+      return `https://cdn.example/att/${encodeURIComponent(cid)}`;
+    case 1:
+      return "blob:https://app.example/00000000-0000-4000-8000-000000000000";
+    case 2:
+      return "data:image/png;base64,iVBORw0KGgo=";
+    case 3:
+      return "javascript:alert(1)";
+    case 4:
+      return "//evil.example/x.png";
+    case 5:
+      return cid;
+    case 6:
+      throw new Error("resolver failed");
+    case 7:
+      return 42 as unknown as string;
+    default:
+      return undefined;
+  }
+}
+
 async function run(env: Env, profile: ProfileDefinition, input: string, engine: Engine, idPolicy?: "keep-in-shadow") {
-  return sanitize(env.doc, input, profile, { forceEngine: engine, loadDOMPurify: async () => factory, idPolicy });
+  return sanitize(env.doc, input, profile, { forceEngine: engine, loadDOMPurify: async () => factory, idPolicy, resolveCid: fuzzResolveCid });
 }
 
 /**
@@ -62,6 +89,7 @@ export async function checkCase(env: Env, profile: ProfileDefinition, input: str
       continue;
     }
     const html = serialize(result.fragment);
+    const htmlForFixpoint = serialize(neutralizeResolvedUrls(result.fragment, profile));
     outputs.set(engine, html);
     trees.set(engine, result.fragment);
 
@@ -71,12 +99,12 @@ export async function checkCase(env: Env, profile: ProfileDefinition, input: str
     // mXSS stability 1: the output is already what a host's re-parse would see, so re-sanitizing it removes
     // nothing (ids are namespaced already, hence keep-in-shadow on the second pass), and the result is a fixpoint.
     try {
-      const again = await run(env, profile, html, engine, "keep-in-shadow");
-      if (normalize(reparse(serialize(again.fragment))) !== normalize(reparse(html))) {
+      const again = await run(env, profile, htmlForFixpoint, engine, "keep-in-shadow");
+      if (normalize(reparse(serialize(again.fragment))) !== normalize(reparse(htmlForFixpoint))) {
         add(
           "fixpoint",
           engine,
-          `re-sanitizing the output changed what a host re-parse sees:\noutput   : ${html}\nresanitized: ${serialize(again.fragment)}\nreparsed   : ${serialize(reparse(html))}`,
+          `re-sanitizing the output changed what a host re-parse sees:\noutput   : ${htmlForFixpoint}\nresanitized: ${serialize(again.fragment)}\nreparsed   : ${serialize(reparse(htmlForFixpoint))}`,
         );
       } else {
         const stable = serialize(again.fragment);

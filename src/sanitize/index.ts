@@ -7,6 +7,7 @@ import { sanitizeWithNative } from "./native.js";
 import { sanitizeWithDOMPurify, getDOMPurify, peekDOMPurify, type DOMPurifyLoader } from "./dompurify.js";
 import { enforceProfile } from "./enforce.js";
 import { rebuildWithLength } from "./rebuild.js";
+import type { CidResolver } from "../policy/cid.js";
 
 /** Default cap on the markup string handed to a sanitizer (UTF-16 code units); see `SanitizeOptions.maxInputLength`. */
 export const DEFAULT_MAX_INPUT_LENGTH = 1_000_000;
@@ -53,6 +54,8 @@ export interface SanitizeOptions {
   truncated?: boolean;
   /** Base URL protocol-relative URLs inherit their scheme from; defaults to `doc.baseURI`. */
   baseUrl?: string;
+  /** Maps `cid:` content-ids to URLs for profiles that list `cid:` (email-v1); without it `cid:` URLs are removed. Never fetched by the library. See `CidResolver`. */
+  resolveCid?: CidResolver;
   /** Per-call DOMPurify loader; defaults to the one set via `registerSafeFragment`/`preloadSanitizer`, then to `import("dompurify")`. */
   loadDOMPurify?: DOMPurifyLoader;
 }
@@ -161,7 +164,11 @@ function finish(
   options: SanitizeOptions,
   start: number,
 ): SanitizeResult {
-  const enforced = enforceProfile(engineFragment, profile, { baseUrl: options.baseUrl ?? doc.baseURI, idPolicy: options.idPolicy });
+  const enforced = enforceProfile(engineFragment, profile, {
+    baseUrl: options.baseUrl ?? doc.baseURI,
+    idPolicy: options.idPolicy,
+    resolveCid: options.resolveCid,
+  });
   const { fragment, length } = rebuildWithLength(engineFragment);
   return {
     fragment,

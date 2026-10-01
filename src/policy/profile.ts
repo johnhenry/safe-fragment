@@ -86,7 +86,9 @@ export interface ProfileDefinition {
    * top of the shared list (`src/sanitize/dangerous.ts`), identically in both
    * engines and `enforceProfile`. For containers whose text must not be promoted
    * into the document by unwrapping, e.g. email's Office/VML namespaces
-   * (`v:shape`, `o:officedocumentsettings`, `xml`). Lowercase; may contain `:`.
+   * (`v:*`, `o:*`, `w:*`, `xml`). Each entry is an exact lowercase name (it may contain
+   * `:`) or a prefix ending in one `*`. The engines leave these elements alone (DOMPurify
+   * is told to keep them) so that `enforceProfile` is the single place they are dropped.
    */
   readonly dropElements?: readonly string[];
   /**

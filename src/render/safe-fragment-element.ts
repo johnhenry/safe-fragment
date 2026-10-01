@@ -1,6 +1,7 @@
 import { SafeFragmentError, isSafeFragmentError, type SafeFragmentErrorCode } from "../errors.js";
 import type { RenderMode, RenderScope, IdPolicy, BeforeRenderDetail, RejectDetail, RenderResult, SourceKind, ClearDetail } from "../types.js";
 import type { SafeFragmentElement } from "./element-types.js";
+import type { CidResolver } from "../policy/cid.js";
 import { getProfile } from "../policy/registry.js";
 import { sanitize, DEFAULT_MAX_INPUT_LENGTH } from "../sanitize/index.js";
 import { fetchSource, ABORT_SUPERSEDED, type FetchCapability, DEFAULT_FETCH_CAPABILITY } from "../source/fetch.js";
@@ -14,6 +15,8 @@ export interface SafeFragmentElementDeps {
   fetchCapability: FetchCapability;
   /** Longest source (UTF-16 code units) accepted from `.html`/`<template>`/`content`/fetched text. */
   maxInputLength?: number;
+  /** Resolver for `cid:` URLs (email-v1); see `CidResolver`. */
+  resolveCid?: CidResolver;
 }
 
 type ResolvedSource = { kind: SourceKind; value: unknown } | { kind: "none" } | { kind: "ambiguous" };
@@ -356,7 +359,7 @@ export function createSafeFragmentElementClass(
 
       let sanitizeResult;
       try {
-        sanitizeResult = await sanitize(this.ownerDocument, rawHtml, profileDef, { truncated: false, maxInputLength, idPolicy });
+        sanitizeResult = await sanitize(this.ownerDocument, rawHtml, profileDef, { truncated: false, maxInputLength, idPolicy, resolveCid: deps.resolveCid });
       } catch (error) {
         if (stale()) return this.#supersededResult();
         return this.#rejectRender(error);

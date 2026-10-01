@@ -4,6 +4,7 @@ import { getProfile } from "../policy/registry.js";
 import { getGlobalDocument } from "../platform/environment.js";
 import { sanitize, sanitizeSync } from "./index.js";
 import type { DOMPurifyLoader } from "./dompurify.js";
+import type { CidResolver } from "../policy/cid.js";
 
 export interface SanitizeToFragmentOptions {
   /** Name of a registered profile (a built-in, or one added with `registerProfile`). Required; there is no default. */
@@ -22,6 +23,13 @@ export interface SanitizeToFragmentOptions {
    * where you insert it; that guarantee is yours (docs/adr/0005).
    */
   idPolicy?: IdPolicy;
+  /**
+   * For profiles that list `cid:` (email-v1): maps a content-id to the URL to render
+   * instead (`https:`, `blob:`, or a raster-image `data:` URL). The library never
+   * fetches a `cid:` URL; without a resolver, or when it returns nothing safe, the
+   * attribute is removed. Allowed on `img src` and `background` only.
+   */
+  resolveCid?: CidResolver;
   /** DOMPurify loader for this call (see `registerSafeFragment({ loadDOMPurify })`). */
   loadDOMPurify?: DOMPurifyLoader;
 }
@@ -62,6 +70,7 @@ export async function sanitizeToFragment(html: string, options: SanitizeToFragme
     baseUrl: options.baseUrl,
     loadDOMPurify: options.loadDOMPurify,
     idPolicy: options.idPolicy,
+    resolveCid: options.resolveCid,
   });
 }
 
@@ -74,5 +83,10 @@ export async function sanitizeToFragment(html: string, options: SanitizeToFragme
  */
 export function sanitizeToFragmentSync(html: string, options: SanitizeToFragmentOptions): SanitizeToFragmentResult {
   const { profile, doc } = resolve(options);
-  return sanitizeSync(doc, html, profile, { maxInputLength: options.maxInputLength, baseUrl: options.baseUrl, idPolicy: options.idPolicy });
+  return sanitizeSync(doc, html, profile, {
+    maxInputLength: options.maxInputLength,
+    baseUrl: options.baseUrl,
+    idPolicy: options.idPolicy,
+    resolveCid: options.resolveCid,
+  });
 }

@@ -1,3 +1,4 @@
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
 
@@ -42,11 +43,14 @@ export function rebuildWithLength(source: DocumentFragment): { fragment: Documen
         to.appendChild(doc.createTextNode(text));
       } else if (child.nodeType === ELEMENT_NODE) {
         const el = child as Element;
-        const copy = doc.createElement(el.localName);
+        // Foreign (SVG/MathML) elements keep their namespace; createElement would make an HTML element of the same name.
+        const copy =
+          el.namespaceURI === HTML_NAMESPACE || el.namespaceURI === null ? doc.createElement(el.localName) : doc.createElementNS(el.namespaceURI, el.localName);
         length += el.localName.length * 2 + 5; // <tag></tag>
         for (const attr of el.attributes) {
           try {
-            copy.setAttribute(attr.name, attr.value);
+            if (attr.namespaceURI) copy.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
+            else copy.setAttribute(attr.name, attr.value);
             length += attr.name.length + attr.value.length + 4; // ` name=""`
           } catch {
             // An attribute name the DOM refuses to set cannot be a valid allowlisted name; drop it.

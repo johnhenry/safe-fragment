@@ -12,7 +12,7 @@ interface NativeSanitizerConfig {
   elements?: string[];
   removeElements?: string[];
   replaceWithChildrenElements?: string[];
-  attributes?: string[];
+  attributes?: Array<string | { name: string; namespace: string | null }>;
   comments?: boolean;
   dataAttributes?: boolean;
 }
@@ -120,7 +120,7 @@ export function sanitizeWithNative(doc: Document, html: string, baseline: Baseli
   const container = inert.createElement("div") as unknown as SetHTMLCapableElement;
   const config: NativeSanitizerConfig = {
     removeElements: baseline.dropSubtreeElements,
-    attributes: baseline.allowedAttributes,
+    attributes: baseline.nativeAttributes,
     comments: false,
     dataAttributes: false,
   };
