@@ -17,9 +17,12 @@ nothing a host's re-parse would keep and is a fixpoint, parse -> serialize -> pa
 the output is stable and still conformant, and the two engines agree unless the
 difference is documented.
 
-The first runs found four things. None was a script-execution bypass; the first two
-are the mutation-XSS shape (output that is safe as a tree but not as text), the last two
-are parser-context differences between the engines.
+The first runs found four things, and the runs over the later features found two more
+(F6 here, and the foreign-content parity rules recorded in
+[ADR 0010](0010-svg-and-mathml-opt-in.md)). None was a script-execution bypass; the first
+two are the mutation-XSS shape (output that is safe as a tree but not as text), F3/F4 are
+parser-context differences between the engines, F6 is a hardening the independent
+verifier asked for.
 
 ## Decisions
 
@@ -65,6 +68,18 @@ clears the parser's "frameset-ok" flag, so a later `<frameset>` is ignored exact
 a `<div>`. `xmp` is in the drop-subtree list, so the sentinel never reaches the output,
 and the report skips it as it skipped `<remove>`.
 
+**F6. Format and ignorable characters inside a scheme are squeezed out before the scheme
+check.** The check already ignored C0 controls, spaces and U+2000-U+2029 (DOMPurify's list),
+so `java\u200bscript:` was refused. The fuzzer's independent verifier also treats the other
+BMP default-ignorable characters (U+FEFF, U+2060-U+206F, U+00AD, U+034F, U+061C, Hangul
+fillers, Mongolian selectors, bidi controls, variation selectors) as invisible and flagged
+`<a href="java\uFEFFscript:alert(1)">`, which a browser parses as a harmless relative path
+but code that normalizes first (a custom element, a framework) would read as `javascript:`.
+`checkUrl`'s second look and `hasScriptScheme` now squeeze the same set
+(`isInvisibleUrlChar`, `src/policy/url.ts`). An ordinary relative URL that merely contains
+such a character (`docs/caf\u00e9\u200b/page.html`) is still allowed: the stricter reading only
+matters when it reveals a disallowed scheme.
+
 **D3 stays a documented divergence.** DOMPurify drops an element whose text contains `<x`
 when its serialization also contains markup-looking text (an in-element comment from
 `</ >`, for example). The native engine keeps it. It over-removes, never under-removes,
@@ -74,7 +89,7 @@ native's and the input has a comment-like token (`test/fuzz/divergences.ts`).
 ## Consequences
 
 - Every fix has a regression test in `test/unit/enforce.test.ts` and a fixture in the XSS
-  or benign corpus (`F1`, `F2`, `F3`, `D2`), run on both engines by the equivalence suite.
+  or benign corpus (`F1`, `F2`, `F3`, `D2`, `F6`), run on both engines by the equivalence suite.
 - The fuzzer runs in CI with a fixed seed and a small budget (`npm test`); `npm run fuzz`
   raises it. The seeds, budgets and the oracle definitions are in the reviewer packet.
 - The XSS corpus grows by whatever the fuzzer finds; a finding is not closed without a

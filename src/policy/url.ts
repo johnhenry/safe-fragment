@@ -85,9 +85,35 @@ export function checkUrl(rawValue: string, allowedSchemes: readonly string[], ba
   return result;
 }
 
-/** Characters DOMPurify strips from a URL attribute before judging its scheme: C0 controls, spaces, and Unicode space/format characters. */
+/**
+ * Characters ignored when looking for a scheme that is hidden inside a value: what DOMPurify strips from a URL
+ * attribute (C0 controls, spaces, U+2000-U+2029 and the Unicode space separators) plus the other BMP
+ * default-ignorable code points (soft hyphen, grapheme joiner, Arabic letter mark, Hangul fillers, Mongolian
+ * selectors, bidi controls, U+2060-U+206F, variation selectors, the BOM). A browser's URL parser does not skip these,
+ * so `java<U+FEFF>script:` is a harmless relative path to it; code that normalizes before reading is why it is refused.
+ */
 function isInvisibleUrlChar(code: number): boolean {
-  return code <= 0x20 || code === 0xa0 || code === 0x1680 || code === 0x180e || (code >= 0x2000 && code <= 0x2029) || code === 0x205f || code === 0x3000;
+  return (
+    code <= 0x20 ||
+    code === 0xa0 ||
+    code === 0xad ||
+    code === 0x34f ||
+    code === 0x61c ||
+    code === 0x115f ||
+    code === 0x1160 ||
+    code === 0x1680 ||
+    code === 0x17b4 ||
+    code === 0x17b5 ||
+    (code >= 0x180b && code <= 0x180f) ||
+    (code >= 0x2000 && code <= 0x200f) ||
+    (code >= 0x2028 && code <= 0x202f) ||
+    (code >= 0x205f && code <= 0x206f) ||
+    code === 0x3000 ||
+    code === 0x3164 ||
+    (code >= 0xfe00 && code <= 0xfe0f) ||
+    code === 0xfeff ||
+    code === 0xffa0
+  );
 }
 
 function removeInvisible(value: string): string {

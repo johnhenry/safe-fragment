@@ -295,4 +295,13 @@ export const XSS_CORPUS: XssFixture[] = [
     forbiddenAttributes: [{ selector: "div", attribute: "class" }],
     survives: ["overlay"],
   },
+  {
+    name: "F6 scheme hidden by a format character (BOM, word joiner, soft hyphen)",
+    profile: "article-v1",
+    input:
+      '<a href="java&#xFEFF;script:alert(1)">a</a><a href="java&#x2060;script:alert(2)">b</a><a href="java&#xAD;script:alert(3)">c</a><a href="vb&#xFEFF;script:x">d</a>',
+    forbiddenSubstrings: ["alert", "script:"],
+    forbiddenAttributes: [{ selector: "a", attribute: "href" }],
+    survives: ["a", "b", "c", "d"],
+  },
 ];

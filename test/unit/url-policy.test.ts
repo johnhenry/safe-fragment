@@ -108,3 +108,36 @@ describe("checkUrl", () => {
     });
   });
 });
+
+describe("checkUrl: invisible and ignorable characters inside a scheme (fuzzer finding F6)", () => {
+  // Browsers reject `java<U+FEFF>script:` as a scheme (it parses as a relative path), but code that reads the
+  // attribute with its own normalization (a custom element, a framework, an old engine) may strip format
+  // characters first. The check already squeezed C0 controls, spaces and U+2000-U+2029 (DOMPurify's list); the
+  // fuzzer's independent oracle also treats the other Unicode default-ignorable characters as invisible.
+  const ignorable: Array<[string, string]> = [
+    ["U+FEFF (BOM / zero width no-break space)", "\ufeff"],
+    ["U+2060 (word joiner)", "\u2060"],
+    ["U+00AD (soft hyphen)", "\u00ad"],
+    ["U+200B (zero width space)", "\u200b"],
+    ["U+180E (Mongolian vowel separator)", "\u180e"],
+    ["U+034F (combining grapheme joiner)", "\u034f"],
+    ["U+061C (Arabic letter mark)", "\u061c"],
+    ["U+202E (right-to-left override)", "\u202e"],
+    ["U+206F (nominal digit shapes)", "\u206f"],
+    ["U+FE0F (variation selector-16)", "\ufe0f"],
+    ["U+3164 (Hangul filler)", "\u3164"],
+    ["U+FFA0 (halfwidth Hangul filler)", "\uffa0"],
+  ];
+  for (const [name, ch] of ignorable) {
+    it(`rejects java${name}script:`, () => {
+      expect(checkUrl(`java${ch}script:alert(1)`, SAFE_DEFAULT_URL_SCHEMES).allowed).toBe(false);
+      expect(checkUrl(`${ch}javascript:alert(1)`, SAFE_DEFAULT_URL_SCHEMES).allowed).toBe(false);
+      expect(checkUrl(`vb${ch}script:x`, SAFE_DEFAULT_URL_SCHEMES).allowed).toBe(false);
+    });
+  }
+
+  it("still allows an ordinary relative URL that merely contains such a character", () => {
+    expect(checkUrl("docs/caf\u00e9\u200b/page.html", SAFE_DEFAULT_URL_SCHEMES).allowed).toBe(true);
+    expect(checkUrl("a\ufeffb", SAFE_DEFAULT_URL_SCHEMES).allowed).toBe(true);
+  });
+});
