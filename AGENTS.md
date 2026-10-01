@@ -60,9 +60,9 @@ The publish workflow's gate is whatever `gate-commands` it passes to the shared 
 
 1. **Security review gate:** safe-fragment#1 (independent security review) is closed with a written sign-off, and its findings are fixed with regression tests. A human says go in chat; do not infer it.
 2. `README` "What still needs human review" and "Known limitations" are current; `SECURITY.md` has a working reporting channel.
-3. Pick the version (PR bumps `version` from `0.0.0`); `CHANGELOG.md` has a dated entry for it citing commits.
+3. The first release is `0.0.0` itself (family convention: a new `@johnhenry/*` address starts at 0.0.0; `CHANGELOG.md` already has its dated `0.0.0` entry citing commits). No bump; add any fixes made after review to that entry.
 4. `repository.url` is `git+https://github.com/johnhenry/safe-fragment.git` (npm provenance verifies it against the workflow's repo), `homepage`, `exports` (each condition has its own `.d.ts`/`.d.cts`), `files` and the exact `dompurify` pin are right; `devEngines` is Node >= 26.
 5. Full loop green on `main` in CI (all three browsers), including the fresh-clone check.
 6. `npm pack --dry-run` and `npm publish --dry-run` (locally, `SF_BROWSERS=chromium,webkit`): exactly `CHANGELOG.md`, `LICENSE`, `README.md`, `package.json`, and `dist/index.{js,cjs,d.ts,d.cts}` plus maps; no `test/`, `.env`, scratch or `.vitest/` files.
 7. The repo has an `NPM_TOKEN` Actions secret (set by the owner; never read or print it) and `id-token: write` is declared in `publish.yml` (it is). First publish of a scoped package needs `--access public` (set in `publishConfig` and by the shared workflow). The `npm view` guard treats the registry's 404 for a never-published package as "not published yet" and proceeds.
-8. Only then `gh release create v<version>` (tag `v<version>` must match `package.json`). Watch the Publish run to green, then verify `npm view @johnhenry/safe-fragment` and the provenance badge, and install it into a scratch project.
+8. Only then `gh release create v0.0.0` (the tag must match `package.json`). Watch the Publish run to green, then verify `npm view @johnhenry/safe-fragment` and the provenance badge, and install it into a scratch project.
