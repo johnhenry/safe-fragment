@@ -199,7 +199,7 @@ cases per profile (6 profiles), clean; seeds 1-6, 11, 12, 21 earlier, over 300,0
 
 ## 8. Test inventory
 
-Chromium: 988 tests in 31 files, all passing (both engines run in it); WebKit: 675 run + 70 loud skips (the native-only suites say so in their titles),
+Chromium: 1,002 tests in 31 files, all passing (both engines run in it); WebKit: 683 run + 70 loud skips (the native-only suites say so in their titles),
 DOMPurify only. Firefox: CI only. Per file (Chromium count):
 
 | File                                                                                                                                         |             Tests | What it is                                                                                                                                    |
