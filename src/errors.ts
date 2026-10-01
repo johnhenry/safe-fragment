@@ -19,6 +19,7 @@ export type SafeFragmentErrorCode =
   // Remote `src` fetch policy
   | "FETCH_DISABLED"
   | "FETCH_ORIGIN_NOT_ALLOWED"
+  | "FETCH_REDIRECT_NOT_ALLOWED"
   | "FETCH_METHOD_NOT_ALLOWED"
   | "FETCH_SIZE_EXCEEDED"
   | "FETCH_TIMEOUT"

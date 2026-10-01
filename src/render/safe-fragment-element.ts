@@ -2,7 +2,7 @@ import { SafeFragmentError, isSafeFragmentError, type SafeFragmentErrorCode } fr
 import type { RenderMode, RenderScope, BeforeRenderDetail, RejectDetail } from "../types.js";
 import { getProfile, getCustomElementAllowlist } from "../policy/registry.js";
 import { sanitize } from "../sanitize/index.js";
-import { fetchSource, type FetchCapability, DEFAULT_FETCH_CAPABILITY } from "../source/fetch.js";
+import { fetchSource, ABORT_SUPERSEDED, type FetchCapability, DEFAULT_FETCH_CAPABILITY } from "../source/fetch.js";
 
 const RENDERED_ROOT_MARKER = "data-safe-fragment-root";
 
@@ -139,7 +139,7 @@ export function createSafeFragmentElementClass(HTMLElementBase: typeof HTMLEleme
       if (this.disabled) return;
 
       const token = ++this.#renderToken;
-      this.#abortController?.abort();
+      this.#abortController?.abort(ABORT_SUPERSEDED);
       const controller = new AbortController();
       this.#abortController = controller;
 

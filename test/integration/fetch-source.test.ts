@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { fetchSource, DEFAULT_FETCH_CAPABILITY, type FetchCapability } from "../../src/source/fetch.js";
+import { fetchSource, DEFAULT_FETCH_CAPABILITY, ABORT_SUPERSEDED, type FetchCapability } from "../../src/source/fetch.js";
 import { isSafeFragmentError } from "../../src/errors.js";
 
 /**
@@ -17,6 +17,26 @@ afterEach(() => {
 
 function mockFetchOnce(impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void {
   globalThis.fetch = impl as typeof fetch;
+}
+
+function abortableNever(_input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+  });
+}
+
+function stallingBody(signal: AbortSignal | null | undefined): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      signal?.addEventListener("abort", () => controller.error(new DOMException("aborted", "AbortError")));
+    },
+  });
+}
+
+function responseWithUrl(body: string, url: string): Response {
+  const res = new Response(body, { status: 200 });
+  Object.defineProperty(res, "url", { value: url });
+  return res;
 }
 
 function cap(overrides: Partial<FetchCapability>): FetchCapability {
@@ -130,8 +150,100 @@ describe("fetchSource", () => {
         }),
     );
     const promise = fetchSource(document, "/x", cap({ enabled: true, timeoutMs: 5000 }), controller.signal);
-    controller.abort();
+    controller.abort(ABORT_SUPERSEDED);
     await expect(promise).rejects.toMatchObject({ code: "FETCH_SUPERSEDED" });
+  });
+
+  it("a plain abort (clear/disable/disconnect) is FETCH_ABORTED, never FETCH_SUPERSEDED", async () => {
+    const controller = new AbortController();
+    mockFetchOnce(abortableNever);
+    const promise = fetchSource(document, "/x", cap({ enabled: true, timeoutMs: 5000 }), controller.signal);
+    controller.abort();
+    await expect(promise).rejects.toMatchObject({ code: "FETCH_ABORTED" });
+  });
+
+  describe("redirects", () => {
+    it("defaults to redirect: error", async () => {
+      let seen: RequestRedirect | undefined;
+      mockFetchOnce(async (_i, init) => {
+        seen = init?.redirect;
+        return new Response("ok");
+      });
+      await fetchSource(document, "/x", cap({ enabled: true }), new AbortController().signal);
+      expect(seen).toBe("error");
+      expect(DEFAULT_FETCH_CAPABILITY.followRedirects).toBe(false);
+    });
+
+    it("a redirect:error network failure surfaces as FETCH_FAILED", async () => {
+      mockFetchOnce(async () => {
+        throw new TypeError("Failed to fetch");
+      });
+      await expect(fetchSource(document, "/x", cap({ enabled: true }), new AbortController().signal)).rejects.toMatchObject({ code: "FETCH_FAILED" });
+    });
+
+    it("followRedirects: true uses redirect: follow", async () => {
+      let seen: RequestRedirect | undefined;
+      mockFetchOnce(async (_i, init) => {
+        seen = init?.redirect;
+        return responseWithUrl("ok", new URL("/y", location.origin).toString());
+      });
+      const text = await fetchSource(document, "/x", cap({ enabled: true, followRedirects: true }), new AbortController().signal);
+      expect(seen).toBe("follow");
+      expect(text).toBe("ok");
+    });
+
+    it("followRedirects: true re-validates response.url and rejects an unlisted origin", async () => {
+      mockFetchOnce(async () => responseWithUrl("evil", "https://evil.example/landing"));
+      await expect(fetchSource(document, "/x", cap({ enabled: true, followRedirects: true }), new AbortController().signal)).rejects.toMatchObject({
+        code: "FETCH_REDIRECT_NOT_ALLOWED",
+      });
+    });
+
+    it("followRedirects: true accepts a redirect to an allowedOrigins entry", async () => {
+      mockFetchOnce(async () => responseWithUrl("fine", "https://cdn.example/landing"));
+      const text = await fetchSource(
+        document,
+        "/x",
+        cap({ enabled: true, followRedirects: true, allowedOrigins: ["https://cdn.example"] }),
+        new AbortController().signal,
+      );
+      expect(text).toBe("fine");
+    });
+  });
+
+  describe("body phase", () => {
+    it("keeps the timeout armed while the body is read (stalled body -> FETCH_TIMEOUT)", async () => {
+      mockFetchOnce(async (_i, init) => new Response(stallingBody(init?.signal), { status: 200 }));
+      await expect(fetchSource(document, "/x", cap({ enabled: true, timeoutMs: 30 }), new AbortController().signal)).rejects.toMatchObject({
+        code: "FETCH_TIMEOUT",
+      });
+    });
+
+    it("maps a mid-stream network error to FETCH_FAILED, not a raw error", async () => {
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.error(new TypeError("network error"));
+        },
+      });
+      mockFetchOnce(async () => new Response(stream, { status: 200 }));
+      await expect(fetchSource(document, "/x", cap({ enabled: true }), new AbortController().signal)).rejects.toMatchObject({ code: "FETCH_FAILED" });
+    });
+
+    it("maps a mid-stream caller abort to FETCH_ABORTED", async () => {
+      const controller = new AbortController();
+      mockFetchOnce(async (_i, init) => new Response(stallingBody(init?.signal), { status: 200 }));
+      const promise = fetchSource(document, "/x", cap({ enabled: true, timeoutMs: 5000 }), controller.signal);
+      setTimeout(() => controller.abort(), 10);
+      await expect(promise).rejects.toMatchObject({ code: "FETCH_ABORTED" });
+    });
+
+    it("maps a mid-stream supersede to FETCH_SUPERSEDED", async () => {
+      const controller = new AbortController();
+      mockFetchOnce(async (_i, init) => new Response(stallingBody(init?.signal), { status: 200 }));
+      const promise = fetchSource(document, "/x", cap({ enabled: true, timeoutMs: 5000 }), controller.signal);
+      setTimeout(() => controller.abort(ABORT_SUPERSEDED), 10);
+      await expect(promise).rejects.toMatchObject({ code: "FETCH_SUPERSEDED" });
+    });
   });
 
   it("produces a real SafeFragmentError instance recognizable via isSafeFragmentError", async () => {
