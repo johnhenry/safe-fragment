@@ -37,6 +37,10 @@ export type {
   LinkDetail,
 } from "./types.js";
 
+export { preloadSanitizer } from "./sanitize/preload.js";
+export type { PreloadSanitizerOptions } from "./sanitize/preload.js";
+export type { DOMPurifyFactory, DOMPurifyLoader, DOMPurifyLike } from "./sanitize/dompurify.js";
+
 export { checkUrl, SAFE_DEFAULT_URL_SCHEMES, RELATIVE_URL_SCHEME } from "./policy/url.js";
 export type { UrlCheckResult } from "./policy/url.js";
 

@@ -22,6 +22,8 @@ export interface BaselineConfig {
   allowedElements: string[];
   allowedAttributes: string[];
   allowCustomElements: boolean;
+  /** DOMPurify `tagNameCheck`: which custom-element tags (exact registered names) survive. */
+  customElementTagCheck: (tag: string) => boolean;
 }
 
 export function buildBaselineConfig(profile: ProfileDefinition, customElements: ReadonlyMap<string, CustomElementAllowlistEntry>): BaselineConfig {
@@ -48,5 +50,6 @@ export function buildBaselineConfig(profile: ProfileDefinition, customElements: 
     allowedElements: [...allowedElements],
     allowedAttributes: [...allowedAttributes],
     allowCustomElements: profile.allowCustomElements,
+    customElementTagCheck: (tag: string) => allowedElements.has(tag),
   };
 }

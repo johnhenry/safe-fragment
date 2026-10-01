@@ -24,6 +24,11 @@
         margin-top: 1rem;
       }
     </style>
+      <!-- dompurify import map: Safari (and any browser without Element.setHTML) takes the DOMPurify
+         path, which resolves the bare specifier "dompurify" at render time. Served from the repo root. -->
+    <script type="importmap">
+      { "imports": { "dompurify": "../../node_modules/dompurify/dist/purify.es.mjs" } }
+    </script>
   </head>
   <body>
     <h1>&lt;example-sandbox&gt;: docs playground example</h1>

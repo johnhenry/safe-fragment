@@ -2,12 +2,20 @@ import { getGlobalDocument, getCustomElementRegistry, getHTMLElementBase } from 
 import { createSafeFragmentElementClass } from "./safe-fragment-element.js";
 import { DEFAULT_FETCH_CAPABILITY, type FetchCapability } from "../source/fetch.js";
 import { SafeFragmentError } from "../errors.js";
+import { setDOMPurifyLoader, type DOMPurifyLoader } from "../sanitize/dompurify.js";
 
 export interface RegisterSafeFragmentOptions {
   /** Custom element tag name to register under. Defaults to `"safe-fragment"`; override only for naming collisions/testing. */
   tagName?: string;
   /** The `src` remote-fetch capability model. Disabled unless explicitly enabled here. */
   fetch?: Partial<FetchCapability>;
+  /**
+   * Supplies the DOMPurify factory for the fallback engine, for pages with no
+   * bundler or import map (Safari has no native `setHTML`, so this is its
+   * default path): `loadDOMPurify: () => import("https://esm.sh/dompurify@3.4.16").then((m) => m.default)`.
+   * Without it, the bare specifier `dompurify` must resolve (import map or bundler).
+   */
+  loadDOMPurify?: DOMPurifyLoader;
   /** Explicit `Document`/`CustomElementRegistry`/`HTMLElement` overrides -- mainly for tests that construct their own realm. Defaults to the ambient globals. */
   document?: Document;
   customElementRegistry?: CustomElementRegistry;
@@ -38,6 +46,8 @@ export function registerSafeFragment(options: RegisterSafeFragmentOptions = {}):
         "It was called somewhere that has none -- likely Node/SSR. Only call it from browser-executed code.",
     );
   }
+
+  if (options.loadDOMPurify) setDOMPurifyLoader(options.loadDOMPurify);
 
   const tagName = options.tagName ?? "safe-fragment";
   if (registry.get(tagName)) return; // idempotent

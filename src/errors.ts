@@ -16,6 +16,7 @@ export type SafeFragmentErrorCode =
   // Sanitization
   | "SANITIZE_FAILED"
   | "SANITIZER_UNAVAILABLE"
+  | "SANITIZER_NOT_READY"
   // Remote `src` fetch policy
   | "FETCH_DISABLED"
   | "FETCH_ORIGIN_NOT_ALLOWED"
