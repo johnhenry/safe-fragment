@@ -236,4 +236,55 @@ export const XSS_CORPUS: XssFixture[] = [
     input: "<div><template><img src=x onerror=alert(1)></template></div>",
     forbiddenSubstrings: ["onerror", "<template"],
   },
+  // --- found by the mutation-XSS fuzzer (test/fuzz); each is a regression fixture ---
+  {
+    name: "F1 attribute value closes a raw-text context: noscript",
+    profile: "article-v1",
+    input: '<noscript><p title="</noscript><img src=x onerror=alert(1)>">x</p></noscript><p title="</noscript><img src=x onerror=alert(1)>">y</p>',
+    forbiddenSubstrings: ["onerror", "</noscript"],
+    forbiddenAttributes: [{ selector: "p", attribute: "title" }],
+    survives: ["y"],
+  },
+  {
+    name: "F1 attribute value with a comment closer",
+    profile: "ui-v1",
+    input: '<p title="x --> <img src=x onerror=alert(1)>">y</p><div class="a --!> b">z</div>',
+    forbiddenSubstrings: ["onerror", "-->", "--!>"],
+    forbiddenAttributes: [
+      { selector: "p", attribute: "title" },
+      { selector: "div", attribute: "class" },
+    ],
+    survives: ["y", "z"],
+  },
+  {
+    name: "F1 attribute value with a CDATA closer and self-closing syntax",
+    profile: "article-v1",
+    input: '<img alt="]><img src=x onerror=alert(1)>" src="https://example.com/a.png"><p title="<br/>">w</p>',
+    forbiddenSubstrings: ["onerror"],
+    forbiddenAttributes: [
+      { selector: "img", attribute: "alt" },
+      { selector: "p", attribute: "title" },
+    ],
+    survives: ["w"],
+  },
+  {
+    name: "F2 javascript:/data: value in a non-URL attribute",
+    profile: "article-v1",
+    input: '<h1 lang="javascript:alert(1)" title="data:text/html,<p>x</p>">a</h1><p title="java&#x09;script:alert(1)" dir="vbscript:x">b</p>',
+    forbiddenSubstrings: ["javascript:", "data:text", "vbscript:"],
+    forbiddenAttributes: [
+      { selector: "h1", attribute: "lang" },
+      { selector: "h1", attribute: "title" },
+      { selector: "p", attribute: "title" },
+      { selector: "p", attribute: "dir" },
+    ],
+    survives: ["a", "b"],
+  },
+  {
+    name: "F3 <frameset> in the body must not replace it (D1)",
+    profile: "article-v1",
+    input: '<p>before</p><frameset><frame src="https://example.com/"></frameset><p>after</p>',
+    forbiddenSubstrings: ["<frameset", "<frame"],
+    survives: ["before", "after"],
+  },
 ];

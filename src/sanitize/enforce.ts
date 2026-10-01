@@ -1,7 +1,7 @@
 import type { ProfileDefinition } from "../policy/profile.js";
 import { matchCustomElement } from "../policy/profile.js";
 import type { SanitizationNote, IdPolicy } from "../types.js";
-import { checkUrl } from "../policy/url.js";
+import { checkUrl, hasScriptScheme } from "../policy/url.js";
 import { DROP_SUBTREE_ELEMENTS, HTML_NAMESPACE } from "./dangerous.js";
 
 const SNIPPET_MAX_LENGTH = 60;
@@ -122,7 +122,12 @@ function checkUrlAttribute(
   // would get javascript:.
   const isSrcset = name === "srcset" || name === "imagesrcset";
   const multi = isSrcset ? parseSrcsetUrls(value) : name === "ping" ? splitOnWhitespace(value) : null;
-  const segments = isSrcset ? value.split(",").map((s) => s.trim()).filter((s) => s !== "") : [];
+  const segments = isSrcset
+    ? value
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s !== "")
+    : [];
   const candidates = multi ? [...multi, ...segments, value] : [value];
   for (const candidate of candidates) {
     const result = checkUrl(candidate, profile.urlSchemes, baseUrl);
@@ -132,6 +137,48 @@ function checkUrlAttribute(
     }
   }
   return { allowed: true };
+}
+
+/** Raw-text and RCDATA elements whose end tag, appearing inside an attribute value, can close a context a re-parse is in. */
+const RAW_TEXT_CLOSER_NAMES: readonly string[] = ["style", "script", "title", "xmp", "textarea", "noscript", "iframe", "noembed", "noframes"];
+
+function startsWithIgnoreCase(value: string, at: number, lowercaseNeedle: string): boolean {
+  if (at + lowercaseNeedle.length > value.length) return false;
+  for (let i = 0; i < lowercaseNeedle.length; i++) {
+    const code = value.charCodeAt(at + i);
+    const lower = code >= 0x41 && code <= 0x5a ? code + 0x20 : code;
+    if (lower !== lowercaseNeedle.charCodeAt(i)) return false;
+  }
+  return true;
+}
+
+/**
+ * True when an attribute VALUE contains text that is markup to a parser in
+ * some context: a comment/CDATA closer (`-->`, `--!>`, `]>`), a self-closing
+ * tag end (`/>`), or the end tag of a raw-text/RCDATA element (`</style`,
+ * `</noscript`, ...). Browsers that do not escape `<`/`>` in attribute values
+ * when serializing (all of them before 2025, and any host that serializes
+ * itself) emit the value verbatim, so a host that stores or re-inserts the
+ * output can see it become markup: the classic mutation-XSS shape
+ * (`<noscript><p title="</noscript><img src=x onerror=alert(1)>">`). The rule
+ * is DOMPurify's (`SAFE_FOR_XML`, `ALLOW_SELF_CLOSE_IN_ATTR: false`) applied to
+ * both engines so they agree; the cost is that a title like `"a --> b"` is dropped.
+ * Fuzzer finding F1. Character scan, no regex.
+ */
+export function attributeValueBreaksOut(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === "-") {
+      if (startsWithIgnoreCase(value, i, "-->") || startsWithIgnoreCase(value, i, "--!>")) return true;
+    } else if (ch === "]") {
+      if (value[i + 1] === ">") return true;
+    } else if (ch === "/") {
+      if (value[i + 1] === ">") return true;
+    } else if (ch === "<" && value[i + 1] === "/") {
+      for (const name of RAW_TEXT_CLOSER_NAMES) if (startsWithIgnoreCase(value, i + 2, name)) return true;
+    }
+  }
+  return false;
 }
 
 function snippet(value: string): string {
@@ -331,6 +378,12 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
         continue;
       }
 
+      if (attributeValueBreaksOut(attr.value)) {
+        removedAttributes.push({ tag, attribute: name, reason: "attribute-value-markup-breakout", snippet: snippet(attr.value) });
+        el.removeAttribute(attr.name);
+        continue;
+      }
+
       if (name === "style") {
         if (!profile.allowStyleAttribute) {
           removedAttributes.push({ tag, attribute: name, reason: "style-attribute-disallowed", snippet: snippet(attr.value) });
@@ -344,6 +397,9 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
         // attribute list names explicitly) survives; no data-* wildcard.
         if (!profile.allowedDataAttributes.includes(name) && !allowedAttrs.includes(name)) {
           removedAttributes.push({ tag, attribute: name, reason: "data-attribute-not-allowlisted", snippet: snippet(attr.value) });
+          el.removeAttribute(attr.name);
+        } else if (hasScriptScheme(attr.value)) {
+          removedAttributes.push({ tag, attribute: name, reason: "script-scheme-in-attribute", snippet: snippet(attr.value) });
           el.removeAttribute(attr.name);
         }
         continue;
@@ -361,6 +417,10 @@ export function enforceProfile(fragment: DocumentFragment, profile: ProfileDefin
           rewrittenUrls.push({ tag, attribute: name, reason: verdict.reason, snippet: snippet(attr.value) });
           el.removeAttribute(attr.name);
         }
+      } else if (hasScriptScheme(attr.value)) {
+        // Not a URL attribute, but nothing in the output may carry a script/data: value for a reader to trust (F2).
+        removedAttributes.push({ tag, attribute: name, reason: "script-scheme-in-attribute", snippet: snippet(attr.value) });
+        el.removeAttribute(attr.name);
       }
     }
 

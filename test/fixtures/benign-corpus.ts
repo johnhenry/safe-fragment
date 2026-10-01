@@ -232,4 +232,11 @@ export const BENIGN_CORPUS: BenignFixture[] = [
     text: ["<p>not <b>markup</b></p> & stuff"],
     absent: ["p", "b"],
   },
+  {
+    name: "table directly after an open paragraph (standards-mode nesting, D2)",
+    profile: "article-v1",
+    input: "<p>intro<table><tbody><tr><td>cell</td></tr></tbody></table>",
+    text: ["intro", "cell"],
+    selectors: ["table td"],
+  },
 ];

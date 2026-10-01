@@ -130,21 +130,44 @@ export interface DOMPurifyOutput {
 }
 
 /**
+ * What DOMPurify's parser sees before the input. DOMPurify parses a whole
+ * document with `DOMParser`, and two things about that parse differ from the
+ * native engine's `<div>` of a standards-mode inert document:
+ *
+ * - **Compat mode.** No doctype means quirks mode, where `<table>` does not
+ *   close an open `<p>`, so `<p><table>` nested on DOMPurify and split on native
+ *   (found by the fuzzer, D2). A doctype makes it standards mode.
+ * - **Where content lands.** A leading `<noscript>`/`<title>`/`<style>` parses into
+ *   `<head>`, and a `<frameset>` that reaches the body REPLACES it (DOMPurify then
+ *   has no body and returns `""`, D1). DOMPurify's own `FORCE_BODY` prefixes an
+ *   unknown `<remove></remove>` for the first reason only. `<xmp></xmp>` does both
+ *   jobs: it starts the body, and a start tag `xmp` sets the "frameset-ok" flag to
+ *   "not ok", so a later `<frameset>` is ignored exactly as in a `<div>` context.
+ *   `xmp` is in the drop-subtree list, so the sentinel never reaches the output.
+ *
+ * DOMPurify's `FORCE_BODY` is therefore off and the prefix is ours (ADR 0004).
+ */
+const PARSE_PREFIX = "<!DOCTYPE html><xmp></xmp>";
+const SENTINEL_TAG = "xmp";
+
+/**
  * Whether an entry of DOMPurify's `removed` log is a node the INPUT contained.
- * The log also records DOMPurify's own scaffolding: with `FORCE_BODY` it
- * prepends an empty `<remove></remove>` sentinel to the markup (the first
- * thing removed, always log entry 0), and it sanitizes the parsed `<body>`
- * wrapper itself (not in any profile's allowlist, so "removed"). Neither is
+ * The log also records DOMPurify's own scaffolding: the empty `<xmp></xmp>`
+ * sentinel of `PARSE_PREFIX` (the first element removed) and the parsed
+ * `<body>` wrapper (not in any profile's allowlist, so "removed"). Neither is
  * input; comments and text nodes are not elements and are never reported.
  * The parser never yields a `<body>`/`<html>`/`<head>` element from body
  * context markup, so skipping those names cannot hide an author's element.
  * (safe-fragment#9)
  */
-function isGenuineRemoval(node: Node, logIndex: number): boolean {
+function isGenuineRemoval(node: Node, seenSentinel: { done: boolean }): boolean {
   if (node.nodeType !== 1) return false;
   const name = node.nodeName.toLowerCase();
   if (name === "body" || name === "html" || name === "head") return false;
-  if (logIndex === 0 && name === "remove" && node.childNodes.length === 0 && (node as Element).attributes.length === 0) return false;
+  if (!seenSentinel.done && name === SENTINEL_TAG && node.childNodes.length === 0 && (node as Element).attributes.length === 0) {
+    seenSentinel.done = true;
+    return false;
+  }
   return true;
 }
 
@@ -159,7 +182,7 @@ export function sanitizeWithDOMPurify(purify: DOMPurifyLike, html: string, basel
   let fragment: DocumentFragment;
   if (baseline.allowCustomElements) activeTagChecks.set(purify, baseline.customElementTagCheck);
   try {
-    fragment = purify.sanitize(html, {
+    fragment = purify.sanitize(PARSE_PREFIX + html, {
       // The locked allowlist -- see function doc comment above.
       ALLOWED_TAGS: baseline.allowedElements,
       ALLOWED_ATTR: baseline.allowedAttributes,
@@ -173,10 +196,8 @@ export function sanitizeWithDOMPurify(purify: DOMPurifyLike, html: string, basel
       ALLOW_UNKNOWN_PROTOCOLS: true,
       ALLOW_SELF_CLOSE_IN_ATTR: false,
       WHOLE_DOCUMENT: false,
-      // Parse in <body> context, like the native engine's <div> context.
-      // Without it a leading <noscript>/<title>/<style>/<meta> is parsed into
-      // <head> and the two engines diverge (ADR 0004).
-      FORCE_BODY: true,
+      // Off: the parse prefix above does the job of FORCE_BODY (and more).
+      FORCE_BODY: false,
       // Off: it would drop any id/name value that collides with a document or
       // form property (`<slot name="title">`, `<p id="title">`) on this engine
       // only. enforceProfile namespaces ids AND clobberable `name`s itself,
@@ -216,6 +237,7 @@ export function sanitizeWithDOMPurify(purify: DOMPurifyLike, html: string, basel
   const removedElements: SanitizationNote[] = [];
   const removedAttributes: SanitizationNote[] = [];
   const log = purify.removed ?? [];
+  const sentinel = { done: false };
   for (let i = 0; i < log.length; i++) {
     const entry = log[i]!;
     if (entry.attribute) {
@@ -224,7 +246,7 @@ export function sanitizeWithDOMPurify(purify: DOMPurifyLike, html: string, basel
         attribute: entry.attribute.name.toLowerCase(),
         reason: "removed-by-engine:dompurify",
       });
-    } else if (entry.element && isGenuineRemoval(entry.element, i)) {
+    } else if (entry.element && isGenuineRemoval(entry.element, sentinel)) {
       removedElements.push({ tag: entry.element.nodeName.toLowerCase(), reason: "removed-by-engine:dompurify" });
     }
   }

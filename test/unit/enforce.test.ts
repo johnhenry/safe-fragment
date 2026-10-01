@@ -300,3 +300,142 @@ describe("enforceProfile: cross-engine value parity (X6)", () => {
     expect(serialize(prefixed)).toContain('href="#user-content-a"');
   });
 });
+
+describe("enforceProfile: attribute values that break out of markup contexts (fuzzer finding F1)", () => {
+  // Browsers that do not escape `<`/`>` in attribute values when serializing (every
+  // engine before 2025, and a host that serializes with its own code) re-emit these
+  // values verbatim. Re-parsed inside <noscript>/<title>/<textarea>/<style>/<xmp>,
+  // inside foreign content, or after a comment-closer, they become markup. DOMPurify
+  // drops such values; the native engine keeps them, so the engines disagreed and
+  // enforceProfile (the boundary) said nothing. It now removes them on both.
+  function paragraphWith(attr: string, value: string): DocumentFragment {
+    const frag = document.createDocumentFragment();
+    const p = document.createElement("p");
+    p.setAttribute(attr, value);
+    p.textContent = "x";
+    frag.appendChild(p);
+    return frag;
+  }
+
+  const hostile: Array<[string, string]> = [
+    ["raw-text closer: noscript", '</noscript><img src=x onerror="alert(1)">'],
+    ["raw-text closer: style, any case", "a</STYLE><script>alert(1)</script>"],
+    ["raw-text closer: title", "</title><svg onload=alert(1)>"],
+    ["raw-text closer: textarea", "</TextArea>"],
+    ["raw-text closer: script", "</script>"],
+    ["raw-text closer: xmp", "</xmp>"],
+    ["raw-text closer: iframe", "</iframe>"],
+    ["raw-text closer: noembed", "</noembed>"],
+    ["raw-text closer: noframes", "</noframes>"],
+    ["comment closer -->", "a --> <img src=x onerror=alert(1)>"],
+    ["comment closer --!>", "a --!> b"],
+    ["CDATA closer ]>", "a ]> b"],
+    ["self-closing tag syntax", "<br/>"],
+  ];
+  for (const [name, value] of hostile) {
+    it(`drops title with ${name}`, () => {
+      const frag = paragraphWith("title", value);
+      const { removedAttributes } = enforceProfile(frag, ARTICLE_V1_PROFILE);
+      expect(frag.firstElementChild!.hasAttribute("title")).toBe(false);
+      expect(removedAttributes.map((n) => n.reason)).toEqual(["attribute-value-markup-breakout"]);
+    });
+  }
+
+  it("applies to every attribute, including ones that are not URLs (alt, lang, a custom element's own)", () => {
+    const frag = document.createDocumentFragment();
+    const img = document.createElement("img");
+    img.setAttribute("alt", "</noscript>");
+    img.setAttribute("src", "https://example.com/a.png");
+    frag.appendChild(img);
+    const custom = document.createElement("x-card");
+    custom.setAttribute("label", "-->");
+    frag.appendChild(custom);
+    const profile = deriveProfile("article-v1", { name: "f1-custom-v1", customElements: [{ tag: "x-card", attributes: ["label"] }] });
+    enforceProfile(frag, profile);
+    expect(img.hasAttribute("alt")).toBe(false);
+    expect(img.getAttribute("src")).toBe("https://example.com/a.png");
+    expect(custom.hasAttribute("label")).toBe(false);
+  });
+
+  const benign: Array<[string, string]> = [
+    ["a lone <", "a < b"],
+    ["a lone >", "2 > 1"],
+    ["a double hyphen", "a -- b"],
+    ["an end tag that is not a raw-text element", "</b>"],
+    ["a single bracket", "x]y"],
+    ["a slash before a >", "a/ >"],
+    ["markup-looking text without a closer", "<b>bold</b>"],
+  ];
+  for (const [name, value] of benign) {
+    it(`keeps title with ${name}`, () => {
+      const frag = paragraphWith("title", value);
+      enforceProfile(frag, ARTICLE_V1_PROFILE);
+      expect(frag.firstElementChild!.getAttribute("title")).toBe(value);
+    });
+  }
+});
+
+describe("enforceProfile: script-scheme values in ANY attribute (fuzzer finding F2)", () => {
+  // DOMPurify drops a javascript:/vbscript:/data: value from every attribute, URL or
+  // not; the native engine kept `<h1 lang="javascript:alert(1)">`. Harmless until a
+  // custom element, a framework or a host script reads the attribute and treats it as
+  // a URL or code ("what your custom elements do with attributes" is out of scope),
+  // and a visible cross-engine difference. enforceProfile now drops them on both.
+  function with_(attr: string, value: string): { frag: DocumentFragment; el: Element } {
+    const frag = document.createDocumentFragment();
+    const p = document.createElement("p");
+    p.setAttribute(attr, value);
+    p.textContent = "x";
+    frag.appendChild(p);
+    return { frag, el: p };
+  }
+
+  const hostile = [
+    "javascript:alert(1)",
+    "JaVaScRiPt:alert(1)",
+    "  javascript:alert(1)",
+    "java\tscript:alert(1)",
+    "java\nscript:alert(1)",
+    "java script:alert(1)",
+    "javascript​:alert(1)",
+    "vbscript:msgbox(1)",
+    "livescript:x",
+    "avascript:alert(1)",
+    "transcript: not really a script",
+    "data:text/html,<p>x</p>",
+    "DATA:text/html;base64,AAAA",
+  ];
+  for (const value of hostile) {
+    it(`drops title=${JSON.stringify(value)}`, () => {
+      const { frag, el } = with_("title", value);
+      const { removedAttributes } = enforceProfile(frag, ARTICLE_V1_PROFILE);
+      expect(el.hasAttribute("title")).toBe(false);
+      expect(removedAttributes.map((n) => n.reason)).toEqual(["script-scheme-in-attribute"]);
+    });
+  }
+
+  for (const [attr, value] of [
+    ["title", "cart:add"],
+    ["title", "https://example.com/"],
+    ["title", "mailto:a@example.com"],
+    ["title", "note: javascript is a language"],
+    ["title", "see data: below"],
+    ["lang", "en-US"],
+    ["title", "a:b"],
+    ["title", "javascripture"],
+    ["title", "script: the word alone"],
+    ["title", "x-script:y"],
+  ] as const) {
+    it(`keeps ${attr}=${JSON.stringify(value)}`, () => {
+      const { frag, el } = with_(attr, value);
+      enforceProfile(frag, ARTICLE_V1_PROFILE);
+      expect(el.getAttribute(attr)).toBe(value);
+    });
+  }
+
+  it("keeps data-action=cart:add (ui-v1) and exportparts=a:b", () => {
+    const frag = fragmentFromHtml('<div data-action="cart:add" title="x">x</div>');
+    enforceProfile(frag, UI_V1_PROFILE);
+    expect(frag.firstElementChild!.getAttribute("data-action")).toBe("cart:add");
+  });
+});

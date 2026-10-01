@@ -133,6 +133,30 @@ function checkUrlOnce(rawValue: string, allowedSchemes: readonly string[], base?
   return { allowed: allowedSchemes.includes(resolved.protocol), scheme: resolved.protocol };
 }
 
+function isWordChar(code: number): boolean {
+  return (code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a) || code === 0x5f;
+}
+
+/**
+ * True when `rawValue` starts, once whitespace/control/format characters are
+ * removed, with `data:` or with a word that ends in `script` followed by `:`
+ * (`javascript:`, `vbscript:`, `livescript:`, `avascript:` ...). This is
+ * DOMPurify's own rule for values of non-URL attributes (`^(?:\w+script|data):`)
+ * applied to both engines so they agree; the cost is that a value such as
+ * `"transcript: ..."` is dropped too. Used on attributes that are NOT URLs
+ * (`title`, `lang`, a custom element's own): such a value is inert until something
+ * reads it as a URL, and nothing in a sanitizer's output should be one. Character
+ * scan, no regex.
+ */
+export function hasScriptScheme(rawValue: string): boolean {
+  const v = removeInvisible(rawValue);
+  let i = 0;
+  while (i < v.length && isWordChar(v.charCodeAt(i))) i++;
+  if (i === 0 || v[i] !== ":") return false;
+  const word = v.slice(0, i).toLowerCase();
+  return word === "data" || (word.length > "script".length && word.endsWith("script"));
+}
+
 /** Conservative default URL scheme allowlist ship profiles use: relative, https, mailto. */
 export const SAFE_DEFAULT_URL_SCHEMES: readonly string[] = Object.freeze([RELATIVE, "https:", "mailto:"]);
 
