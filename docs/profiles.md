@@ -171,7 +171,7 @@ shadowRoot.append(fragment);
 ## `email-v1`
 
 **Status: implemented, with an email corpus (benign and hostile) run through
-both engines; not yet independently reviewed** ([ADR 0009](adr/0009-email-v1.md),
+both engines; covered by the 2026-10-01 security sign-off** ([ADR 0009](adr/0009-email-v1.md),
 safe-fragment#2).
 
 Received HTML email bodies. Table-based layout survives; the three things real

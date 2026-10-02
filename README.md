@@ -20,7 +20,8 @@ assigns untrusted strings through `innerHTML`, `outerHTML`,
 `insertAdjacentHTML`, `setHTMLUnsafe`, or any equivalent unsafe sink --
 see [Security model](#security-model) below.
 
-> **Status: not yet published, not yet independently reviewed.**
+> **Status: not yet published. Security review signed off by the maintainer on 2026-10-01**
+> ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1), [review packet](docs/review/README.md)).
 > `version` is pinned at `0.0.0`; there is no npm release and no GitHub
 > release tag yet. See [Known limitations](#known-limitations) and
 > [What still needs human review](#what-still-needs-human-review) before
@@ -224,13 +225,13 @@ exported as `createSafeFragmentElementClass(HTMLElement, deps)` and
 
 Full detail: [docs/profiles.md](docs/profiles.md).
 
-| Profile                 | Status                                                    | Summary                                                                                                                                                           |
-| ----------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `plain-text-v1`         | Fully implemented, tested                                 | No HTML parsing at all -- `textContent` only.                                                                                                                     |
-| `article-v1`            | Fully implemented, tested                                 | Rich read-mostly content: prose, headings, lists, tables, links, images.                                                                                          |
-| `ui-v1`                 | Fully implemented, tested                                 | Layout/interactive elements, `data-action` delegation, forced `type="button"`. No classes by default (`allowedClasses`). Derive a profile to add custom elements. |
-| `component-template-v1` | Fully implemented, tested                                 | `ui-v1` plus `<slot>` and `part`/`slot`/`exportparts`, for a web component's template. Opt-in `idPolicy: "keep-in-shadow"`. No `<style>`.                         |
-| `email-v1`              | Implemented, email corpus; not yet independently reviewed | Table-layout subset with the legacy layout attributes; `cid:` images through your `resolveCid`; MSO comments and VML removed; blocks relative auto-loading URLs.  |
+| Profile                 | Status                                                        | Summary                                                                                                                                                           |
+| ----------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plain-text-v1`         | Fully implemented, tested                                     | No HTML parsing at all -- `textContent` only.                                                                                                                     |
+| `article-v1`            | Fully implemented, tested                                     | Rich read-mostly content: prose, headings, lists, tables, links, images.                                                                                          |
+| `ui-v1`                 | Fully implemented, tested                                     | Layout/interactive elements, `data-action` delegation, forced `type="button"`. No classes by default (`allowedClasses`). Derive a profile to add custom elements. |
+| `component-template-v1` | Fully implemented, tested                                     | `ui-v1` plus `<slot>` and `part`/`slot`/`exportparts`, for a web component's template. Opt-in `idPolicy: "keep-in-shadow"`. No `<style>`.                         |
+| `email-v1`              | Implemented, email corpus; covered by the 2026-10-01 sign-off | Table-layout subset with the legacy layout attributes; `cid:` images through your `resolveCid`; MSO comments and VML removed; blocks relative auto-loading URLs.  |
 
 SVG and MathML are **opt-in** profile options, off in every built-in:
 `svg: "static"` (shapes, paths, text, gradients, same-fragment `use`) and
@@ -422,7 +423,7 @@ a benign-content corpus compared across both sanitization engines:
 
 Known gaps (each has an issue):
 
-- **No independent security review yet** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)). Do not release or rely on this for hostile content before it.
+- **Security review: signed off by the maintainer on 2026-10-01** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1), [packet](docs/review/README.md)). Gaps found after that sign-off are filed as new issues; the native Sanitizer spec keeps moving ([#4](https://github.com/johnhenry/safe-fragment/issues/4)).
 - **`email-v1` has no CSS**: inline `style=` and `<style>` are how mail is styled, and both are unsupported, so a "hidden" preheader becomes visible and CSS colours are lost; remote `https:` images load (tracking pixels) unless you derive a profile without `https:` ([ADR 0009](docs/adr/0009-email-v1.md), [safe-fragment#2](https://github.com/johnhenry/safe-fragment/issues/2)).
 - **SVG and MathML are opt-in and partial** ([ADR 0010](docs/adr/0010-svg-and-mathml-opt-in.md), [safe-fragment#3](https://github.com/johnhenry/safe-fragment/issues/3)): no animation, `image`, `foreignObject`, filters or `style`; and **`<use>` is removed by the native engine** (Chromium) while DOMPurify keeps a same-fragment one, so it works only on Safari/fallback.
 - **On Chromium the engines parse in a hidden same-origin `about:blank` iframe** (`inertRealm: "auto"`, [ADR 0012](docs/adr/0012-parse-realm-iframe-for-csp.md), [safe-fragment#13](https://github.com/johnhenry/safe-fragment/issues/13)), because Chromium's HTML parser reports CSP violations (`style-src-attr` for `style=`, `style-src-elem`/`base-uri` on the DOMPurify engine) while parsing hostile input in every other document context, although the output is clean. The iframe is empty, scriptless and hidden, one per document; it is visible to `querySelectorAll("iframe")` and observers. Set `inertRealm: "document"` to never add it (and accept the reports). A page that sandboxes or blocks the iframe falls back to the old behavior. Firefox and Safari are unaffected and unchanged.
@@ -529,9 +530,10 @@ review ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)).
   phishing link is not a code-execution bug. See
   [docs/security-model.md](docs/security-model.md) "What this package does not
   protect against".
-- **The pending independent review** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1);
-  [packet](docs/review/README.md)) and the moving native Sanitizer spec
-  ([#4](https://github.com/johnhenry/safe-fragment/issues/4)).
+- **The moving native Sanitizer spec**
+  ([#4](https://github.com/johnhenry/safe-fragment/issues/4)). The security review was signed off by the
+  maintainer on 2026-10-01 ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1);
+  [packet](docs/review/README.md)).
 
 Full detail: [docs/security-model.md](docs/security-model.md).
 

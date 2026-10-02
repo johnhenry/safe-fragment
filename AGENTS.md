@@ -50,7 +50,7 @@ Same order as CI (`.github/workflows/ci.yml`); match it locally.
 
 ## JSR readiness (prepare only; do not publish)
 
-`jsr.json` (`@johnhenry/safe-fragment`, `0.0.0`, `exports: ./src/index.ts`, an `imports` map for `dompurify`) makes `npx --yes jsr publish --dry-run --allow-dirty` pass (a CI and publish-gate step); the slow-types rules are why `src/` has no `declare global` and why every exported function has an explicit return type. **Creating the JSR scope/package is the owner's manual step** (jsr.io offers no CLI or API for it; see `~/Projects/@johnhenry/ecosystem/jsr-packages/README.md`: scope `johnhenry`, package `safe-fragment`, linked to the GitHub repo). Do not run `jsr publish` without `--dry-run`, and do not add a JSR publish workflow before the package exists and the review (safe-fragment#1) is done.
+`jsr.json` (`@johnhenry/safe-fragment`, `0.0.0`, `exports: ./src/index.ts`, an `imports` map for `dompurify`) makes `npx --yes jsr publish --dry-run --allow-dirty` pass (a CI and publish-gate step); the slow-types rules are why `src/` has no `declare global` and why every exported function has an explicit return type. **Creating the JSR scope/package is the owner's manual step** (jsr.io offers no CLI or API for it; see `~/Projects/@johnhenry/ecosystem/jsr-packages/README.md`: scope `johnhenry`, package `safe-fragment`, linked to the GitHub repo). Do not run `jsr publish` without `--dry-run`, and do not add a JSR publish workflow before the package exists (the security review, safe-fragment#1, was signed off by the maintainer on 2026-10-01).
 
 ## Definition of done
 
@@ -67,7 +67,7 @@ Same order as CI (`.github/workflows/ci.yml`); match it locally.
 
 ## Releases
 
-Bump `version` in a PR, add the `CHANGELOG.md` entry, merge, then `gh release create v<version>`; the release triggers `.github/workflows/publish.yml` (idempotent). **Do not cut the first release without an explicit human go-ahead**: it needs the independent security review (safe-fragment#1).
+Bump `version` in a PR, add the `CHANGELOG.md` entry, merge, then `gh release create v<version>`; the release triggers `.github/workflows/publish.yml` (idempotent). **Do not cut the first release without an explicit human go-ahead.** The security-review gate (safe-fragment#1) was signed off by the maintainer on 2026-10-01; the release itself still needs the go-ahead and the `NPM_TOKEN` secret.
 
 The publish workflow's gate is whatever `gate-commands` it passes to the shared `johnhenry/workflows/.github/workflows/npm-publish.yml@v1` (that workflow has no gate of its own: install, your gate, then an `npm view` pre-flight and `npm publish --provenance --access public`). Keep `publish.yml`'s list identical to `ci.yml`'s: lint, typecheck, build, `npm test` (all three browsers), `test:dist`, `examples`, `npm pack --dry-run`, `npm run size`, `npx --yes jsr publish --dry-run --allow-dirty`. `npm publish` also runs `prepublishOnly` (lint, typecheck, test, build) and `prepare` (rebuild; harmless with `npm ci`), so the suite runs twice in the publish job.
 
