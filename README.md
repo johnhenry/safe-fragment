@@ -20,12 +20,10 @@ assigns untrusted strings through `innerHTML`, `outerHTML`,
 `insertAdjacentHTML`, `setHTMLUnsafe`, or any equivalent unsafe sink --
 see [Security model](#security-model) below.
 
-> **Status: not yet published. Security review signed off by the maintainer on 2026-10-01**
-> ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1), [review packet](docs/review/README.md)).
-> `version` is pinned at `0.0.0`; there is no npm release and no GitHub
-> release tag yet. See [Known limitations](#known-limitations) and
-> [What still needs human review](#what-still-needs-human-review) before
-> using this for anything beyond experimentation. See
+> **Status: `0.0.0` published to npm on 2026-10-03 (with provenance). Security review signed off by the
+> maintainer on 2026-10-01** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1),
+> [review packet](docs/review/README.md)). See [Known limitations](#known-limitations) and
+> [What still needs human review](#what-still-needs-human-review) before relying on it. See
 > [SECURITY.md](SECURITY.md) for how to report a suspected sanitizer
 > bypass.
 

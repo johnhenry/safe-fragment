@@ -2,7 +2,7 @@
 
 ## 0.0.0 — the pre-release hardening pass (2026-09-30)
 
-**Security review signed off by the maintainer on 2026-10-01** ([#1](https://github.com/johnhenry/safe-fragment/issues/1); reviewer packet in `docs/review/`). Not yet published.
+**Security review signed off by the maintainer on 2026-10-01** ([#1](https://github.com/johnhenry/safe-fragment/issues/1); reviewer packet in `docs/review/`). Published to npm on 2026-10-03, with provenance (GitHub release [v0.0.0](https://github.com/johnhenry/safe-fragment/releases/tag/v0.0.0)).
 
 **Provenance.** `@johnhenry/safe-fragment` is a new package: never published
 under any other name, and nothing is on npm yet. `0.0.0` is the unreleased
