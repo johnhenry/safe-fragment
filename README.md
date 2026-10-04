@@ -543,7 +543,7 @@ safe-fragment is the sanitizer the family reaches for when markup comes from
 somewhere less trusted than your own source. It has no runtime dependency on
 any sibling; the relationships are mechanisms, named below.
 
-- **[`johnhenry/workbench`](https://github.com/johnhenry/workbench)** ([live](https://johnhenry.github.io/workbench/), [docs](https://opensource.johnhenry.me/workbench/)) -- uses safe-fragment to render untrusted note bodies.
+- **[Untrusted Desk](https://opensource.johnhenry.me/orrery/#/workbench)** (an orrery planet) -- renders untrusted note bodies through safe-fragment's profiles, with a strict-CSP / Trusted Types frame showing zero violations.
 - **[`@johnhenry/html-modules`](https://github.com/johnhenry/html-modules)** --
   html-modules stamps component templates into the page as real DOM, and its
   opt-in `sanitize` hook runs each template of a less-trusted module through a
