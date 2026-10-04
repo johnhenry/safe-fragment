@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted. Resolves safe-fragment#13 for Chromium (see "Where it does not apply"). Refines [ADR 0007](0007-no-gated-sink-in-the-native-report.md).
+Accepted, **corrected by [ADR 0013](0013-detached-parse-realm.md)**: the attached iframe described here inherits the page's CSP and reports every violation to its
+own document (and to the page's report endpoints); the measurement below listened on the page's document only. On Chromium the iframe is now removed right after
+it is made. Refines [ADR 0007](0007-no-gated-sink-in-the-native-report.md).
 
 ## Context
 

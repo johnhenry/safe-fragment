@@ -66,8 +66,8 @@ of it.
      created per window and reused (so a Trusted Types `dompurify` policy is
      registered once).
    - Both engines parse inside an **inert document** (no browsing context,
-     so nothing loads or runs; on Chromium made by a hidden `about:blank` iframe's
-     `DOMImplementation`, [ADR 0012](adr/0012-parse-realm-iframe-for-csp.md)), in `<body>`/`<div>` context, standards mode, so the same
+     so nothing loads or runs; on Chromium made by a detached `about:blank` iframe's
+     `DOMImplementation`, [ADR 0012](adr/0012-parse-realm-iframe-for-csp.md), [ADR 0013](adr/0013-detached-parse-realm.md)), in `<body>`/`<div>` context, standards mode, so the same
      input yields the same tree in both (DOMPurify is fed `<!DOCTYPE html><xmp></xmp>` before the
      input: the doctype is standards mode, `<xmp>` starts the body and stops a `<frameset>` from
      replacing it, [ADR 0008](adr/0008-mutation-xss-fuzzer-findings.md)). The native engine runs in a
@@ -271,11 +271,14 @@ documented interpretation over silently overreaching" instruction:
 - **CSP reports from the browser's own parser, if you opt out of the iframe realm.** In
   Chromium, parsing hostile input that contains `style=`, `<style>` or `<base>` reports
   `style-src-attr` / `style-src-elem` / `base-uri` violations although the output is clean; the
-  parser does it in every document context. The library avoids it by parsing in a hidden
-  same-origin `about:blank` iframe on Chromium (`inertRealm: "auto"`,
-  [ADR 0012](adr/0012-parse-realm-iframe-for-csp.md)), which is visible to
-  `querySelectorAll("iframe")` and observers; `inertRealm: "document"` never adds it and accepts
-  the reports (safe-fragment#13, pinned in `test/integration/csp-violations.test.ts`).
+  parser does it in every document whose context has a policy, including an attached
+  `about:blank` iframe (which inherits the page's CSP and its report endpoints). The library
+  avoids it by parsing in documents of a same-origin `about:blank` iframe that is removed right
+  after it is made, on Chromium (`inertRealm: "auto"`, [ADR 0012](adr/0012-parse-realm-iframe-for-csp.md),
+  [ADR 0013](adr/0013-detached-parse-realm.md)): a detached window has no policy to check. Observers
+  see the iframe inserted and removed once per document; `inertRealm: "document"` never adds it and
+  accepts the reports (safe-fragment#13, pinned in `test/integration/csp-violations.test.ts`, which
+  watches the page and every iframe inserted into it).
 - **Same-origin GET side effects from relative image URLs** under
   `article-v1`/`ui-v1` (safe-fragment#6); opt in to
   `blockRelativeAutoLoadUrls` via `deriveProfile`.

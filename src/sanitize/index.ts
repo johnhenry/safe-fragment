@@ -4,7 +4,7 @@ import { SafeFragmentError } from "../errors.js";
 import { hasNativeSanitizer } from "./capabilities.js";
 import { buildBaselineConfig } from "./config.js";
 import { sanitizeWithNative } from "./native.js";
-import { sanitizeWithDOMPurify, getDOMPurify, peekDOMPurify, type DOMPurifyLoader } from "./dompurify.js";
+import { sanitizeWithDOMPurify, getRealmDOMPurify, peekRealmDOMPurify, type DOMPurifyLoader } from "./dompurify.js";
 import { enforceProfile } from "./enforce.js";
 import { rebuildWithLength } from "./rebuild.js";
 import type { CidResolver } from "../policy/cid.js";
@@ -97,17 +97,12 @@ export async function sanitize(doc: Document, html: string, profile: ProfileDefi
   const baseline = buildBaselineConfig(profile);
   const useNative = options.forceEngine === "native" || (options.forceEngine === undefined && hasNativeSanitizer(doc));
 
-  const realm = getInertRealm(doc, options.inertRealm);
   if (useNative) {
-    const out = sanitizeWithNative(doc, html, baseline, realm);
+    const out = sanitizeWithNative(doc, html, baseline, getInertRealm(doc, options.inertRealm));
     return finish(doc, out.fragment, "native", out.removedElements, out.removedAttributes, html, profile, options, start);
   }
 
-  const win = realm?.window ?? doc.defaultView;
-  if (!win) {
-    throw new SafeFragmentError("SANITIZER_UNAVAILABLE", "DOMPurify fallback requires a Document with a defaultView (Window); none is available.");
-  }
-  const purify = await getDOMPurify(win, options.loadDOMPurify);
+  const purify = await getRealmDOMPurify(doc, options.inertRealm, options.loadDOMPurify);
   const out = sanitizeWithDOMPurify(purify, html, baseline);
   return finish(doc, out.fragment, "dompurify", out.removedElements, out.removedAttributes, html, profile, options, start);
 }
@@ -127,12 +122,11 @@ export function sanitizeSync(doc: Document, html: string, profile: ProfileDefini
 
   const baseline = buildBaselineConfig(profile);
   const useNative = options.forceEngine === "native" || (options.forceEngine === undefined && hasNativeSanitizer(doc));
-  const realm = getInertRealm(doc, options.inertRealm);
   if (useNative) {
-    const out = sanitizeWithNative(doc, html, baseline, realm);
+    const out = sanitizeWithNative(doc, html, baseline, getInertRealm(doc, options.inertRealm));
     return finish(doc, out.fragment, "native", out.removedElements, out.removedAttributes, html, profile, options, start);
   }
-  const purify = peekDOMPurify(realm?.window ?? doc.defaultView);
+  const purify = peekRealmDOMPurify(doc, options.inertRealm);
   if (!purify) {
     throw new SafeFragmentError(
       "SANITIZER_NOT_READY",

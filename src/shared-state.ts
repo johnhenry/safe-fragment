@@ -12,8 +12,8 @@ import type { DOMPurifyFactory, DOMPurifyLike, DOMPurifyLoader } from "./sanitiz
  * `Symbol.for` key, created lazily (never at module top level).
  */
 export interface SharedState {
-  /** Per-document hidden parse-realm iframes (src/platform/realm.ts); `null` records a document where none could be made. */
-  realms?: WeakMap<object, { frame: HTMLIFrameElement; realm: { window: Window; implementation: DOMImplementation } } | null>;
+  /** Per-document parse realms (src/platform/realm.ts): a hidden iframe, detached on Chromium; `null` records a document where none could be made. */
+  realms?: WeakMap<object, { frame: HTMLIFrameElement; realm: { window: Window; implementation: DOMImplementation }; detached: boolean } | null>;
   profiles?: Map<string, ProfileDefinition>;
   builtinNames?: Set<string>;
   purify?: {

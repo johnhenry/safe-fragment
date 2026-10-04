@@ -424,7 +424,7 @@ Known gaps (each has an issue):
 - **Security review: signed off by the maintainer on 2026-10-01** ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1), [packet](docs/review/README.md)). Gaps found after that sign-off are filed as new issues; the native Sanitizer spec keeps moving ([#4](https://github.com/johnhenry/safe-fragment/issues/4)).
 - **`email-v1` has no CSS**: inline `style=` and `<style>` are how mail is styled, and both are unsupported, so a "hidden" preheader becomes visible and CSS colours are lost; remote `https:` images load (tracking pixels) unless you derive a profile without `https:` ([ADR 0009](docs/adr/0009-email-v1.md), [safe-fragment#2](https://github.com/johnhenry/safe-fragment/issues/2)).
 - **SVG and MathML are opt-in and partial** ([ADR 0010](docs/adr/0010-svg-and-mathml-opt-in.md), [safe-fragment#3](https://github.com/johnhenry/safe-fragment/issues/3)): no animation, `image`, `foreignObject`, filters or `style`; and **`<use>` is removed by the native engine** (Chromium) while DOMPurify keeps a same-fragment one, so it works only on Safari/fallback.
-- **On Chromium the engines parse in a hidden same-origin `about:blank` iframe** (`inertRealm: "auto"`, [ADR 0012](docs/adr/0012-parse-realm-iframe-for-csp.md), [safe-fragment#13](https://github.com/johnhenry/safe-fragment/issues/13)), because Chromium's HTML parser reports CSP violations (`style-src-attr` for `style=`, `style-src-elem`/`base-uri` on the DOMPurify engine) while parsing hostile input in every other document context, although the output is clean. The iframe is empty, scriptless and hidden, one per document; it is visible to `querySelectorAll("iframe")` and observers. Set `inertRealm: "document"` to never add it (and accept the reports). A page that sandboxes or blocks the iframe falls back to the old behavior. Firefox and Safari are unaffected and unchanged.
+- **On Chromium the engines parse in documents of a detached same-origin `about:blank` iframe** (`inertRealm: "auto"`, [ADR 0012](docs/adr/0012-parse-realm-iframe-for-csp.md), [ADR 0013](docs/adr/0013-detached-parse-realm.md), [safe-fragment#13](https://github.com/johnhenry/safe-fragment/issues/13)), because Chromium's HTML parser reports CSP violations (`style-src-attr` for `style=`, `style-src-elem`/`base-uri` on the DOMPurify engine) while parsing hostile input in every document that has a policy, although the output is clean. An attached `about:blank` iframe inherits the page's CSP and reports too (to its own document, and to your `report-uri`); a detached one has no policy left to check. The iframe is inserted into `<html>` and removed in the same task, once per document (twice if DOMPurify is created later), so a `MutationObserver` sees it come and go; nothing stays in the page. Set `inertRealm: "document"` to never add it (and accept the reports). A page that sandboxes or blocks the iframe falls back to the old behavior. Firefox and Safari are unaffected and unchanged (with `inertRealm: "iframe"` forced there, the iframe stays attached: WebKit's Trusted Types policies stop working in a detached window).
 - **The native Sanitizer API spec is still moving**; only Chromium (and, per CI, Firefox) ship `setHTML`, and Safari takes the DOMPurify path ([safe-fragment#4](https://github.com/johnhenry/safe-fragment/issues/4)).
 - **DOMPurify's cost is quadratic in removed nodes**: `maxInputLength` bounds it, it does not remove it ([safe-fragment#5](https://github.com/johnhenry/safe-fragment/issues/5)).
 - **`article-v1`/`ui-v1` keep relative `img src`**, a same-origin GET on render; opt in to `blockRelativeAutoLoadUrls` ([safe-fragment#6](https://github.com/johnhenry/safe-fragment/issues/6)).
@@ -497,8 +497,10 @@ review ([safe-fragment#1](https://github.com/johnhenry/safe-fragment/issues/1)).
 - **Works under Trusted Types** (`require-trusted-types-for 'script'`): one
   DOMPurify instance, hence one `dompurify` policy, per window, and no gated
   sink is ever called with a string. Parsing hostile input produces no CSP
-  violations either (on Chromium via a hidden `about:blank` iframe realm,
-  [ADR 0012](docs/adr/0012-parse-realm-iframe-for-csp.md)).
+  violations or reports either, in the page or in any frame (on Chromium via
+  a detached `about:blank` iframe realm,
+  [ADR 0012](docs/adr/0012-parse-realm-iframe-for-csp.md),
+  [ADR 0013](docs/adr/0013-detached-parse-realm.md)).
 - **Bounded input:** `maxInputLength` (default 1,000,000 characters) rejects
   oversized sources with `SOURCE_TOO_LARGE` before parsing.
 
@@ -541,7 +543,7 @@ safe-fragment is the sanitizer the family reaches for when markup comes from
 somewhere less trusted than your own source. It has no runtime dependency on
 any sibling; the relationships are mechanisms, named below.
 
-- **[`johnhenry/workbench`](https://github.com/johnhenry/workbench)** ([live](https://johnhenry.github.io/workbench/), [docs](https://opensource.johnhenry.me/workbench/)) -- uses safe-fragment to render untrusted note bodies.
+- **[Untrusted Desk](https://opensource.johnhenry.me/orrery/#/workbench)** (an orrery planet) -- renders untrusted note bodies through safe-fragment's profiles, with a strict-CSP / Trusted Types frame showing zero violations.
 - **[`@johnhenry/html-modules`](https://github.com/johnhenry/html-modules)** --
   html-modules stamps component templates into the page as real DOM, and its
   opt-in `sanitize` hook runs each template of a less-trusted module through a
