@@ -5,6 +5,7 @@ import { sanitizeToFragment } from "../../src/sanitize/public.js";
 import { hasNativeSanitizer } from "../../src/sanitize/capabilities.js";
 import { getProfile } from "../../src/policy/registry.js";
 import type { DOMPurifyFactory } from "../../src/sanitize/dompurify.js";
+import { watchViolationsEverywhere, type ViolationWatch } from "../helpers/csp.js";
 
 // safe-fragment#12: under `require-trusted-types-for 'script'` sanitizing must
 // not touch ANY gated sink, in any engine: a blocked sink is a
@@ -25,23 +26,8 @@ function makeEnforcedFrame(): Promise<Document> {
   });
 }
 
-/** Collects every `securitypolicyviolation` the frame's document sees until `stop()`. */
-function watchViolations(doc: Document): { stop(): Promise<string[]> } {
-  const seen: string[] = [];
-  const listener = (e: Event): void => {
-    const v = e as SecurityPolicyViolationEvent;
-    seen.push(`${v.violatedDirective} ${v.blockedURI} ${v.sample}`);
-  };
-  doc.addEventListener("securitypolicyviolation", listener);
-  return {
-    async stop() {
-      // violation events are queued as tasks: let them be delivered.
-      await new Promise((r) => setTimeout(r, 100));
-      doc.removeEventListener("securitypolicyviolation", listener);
-      return seen;
-    },
-  };
-}
+/** Every `securitypolicyviolation` in the frame's document and in any iframe inserted into it (the parse realm's, ADR 0013). */
+const watchViolations = (doc: Document): ViolationWatch => watchViolationsEverywhere(doc, 100);
 
 const factory = createDOMPurify as unknown as DOMPurifyFactory;
 const INPUTS = [

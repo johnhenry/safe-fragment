@@ -2,8 +2,8 @@ import type { SanitizerEngineKind } from "../types.js";
 import { SafeFragmentError } from "../errors.js";
 import { getGlobalDocument } from "../platform/environment.js";
 import { hasNativeSanitizer } from "./capabilities.js";
-import { getInertRealm, type InertRealmMode } from "../platform/realm.js";
-import { getDOMPurify, setDOMPurifyLoader, type DOMPurifyLoader } from "./dompurify.js";
+import type { InertRealmMode } from "../platform/realm.js";
+import { getRealmDOMPurify, setDOMPurifyLoader, type DOMPurifyLoader } from "./dompurify.js";
 
 export interface PreloadSanitizerOptions {
   /** The document whose window the sanitizer is prepared for. Defaults to the ambient `document`. */
@@ -36,10 +36,6 @@ export async function preloadSanitizer(options: PreloadSanitizerOptions = {}): P
   }
   if (options.loadDOMPurify) setDOMPurifyLoader(options.loadDOMPurify);
   if ((options.engine ?? "auto") === "auto" && hasNativeSanitizer(doc)) return "native";
-  const win = getInertRealm(doc, options.inertRealm)?.window ?? doc.defaultView;
-  if (!win) {
-    throw new SafeFragmentError("SANITIZER_UNAVAILABLE", "DOMPurify fallback requires a Document with a defaultView (Window); none is available.");
-  }
-  await getDOMPurify(win, options.loadDOMPurify);
+  await getRealmDOMPurify(doc, options.inertRealm, options.loadDOMPurify);
   return "dompurify";
 }

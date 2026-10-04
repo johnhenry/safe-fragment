@@ -55,15 +55,16 @@ profile removes. Diagnostic only; the output is unaffected.
 
 <a id="chromium-csp-reports"></a>
 
-### Parse realm: an iframe on Chromium (issue #13, ADR 0012)
+### Parse realm: a detached iframe on Chromium (issue #13, ADR 0012, ADR 0013)
 
 Chromium's HTML parser checks the page's CSP while parsing, in every document that shares the page's execution context: `style-src-attr` for a `style=""` attribute the
 moment the parser creates the element (twelve contexts measured: the live document, `createHTMLDocument`, `new Document()`, a `<template>`'s content document, XHTML and
 XML documents, a `DOMParser` document, a shadow root, `Document.parseHTML`, `<template>.setHTML`, `ShadowRoot.setHTML`, an SVG context element), and `style-src-elem`/`base-uri`
-for elements connected to the document being parsed (DOMPurify's `DOMParser` document). Only the initial document of a hidden `about:blank` iframe reports nothing, so on
-Chromium (`navigator.userAgentData` defined; `inertRealm: "auto"`) the engines parse there. Firefox and Safari keep the page's own inert document and never reported.
+for elements connected to the document being parsed (DOMPurify's `DOMParser` document). An attached `about:blank` iframe inherits the page's CSP and reports the same set
+to its own document (ADR 0012 measured only the page's, ADR 0013 corrects it); documents of an iframe that has been removed have no execution context and report nothing, so
+on Chromium (`navigator.userAgentData` defined; `inertRealm: "auto"`) the engines parse there. Firefox and Safari keep the page's own inert document and never reported.
 `inertRealm: "document"` restores the old behavior, and `test/integration/csp-violations.test.ts` pins exactly which directives it reports. Not equal across engines in
-one respect: Chromium has a hidden iframe in `<html>` after the first sanitization; the others do not.
+one respect: on Chromium an observer sees a hidden iframe inserted into `<html>` and removed in the same task, once per document; the others never insert one.
 
 ## Not divergences, but visible
 

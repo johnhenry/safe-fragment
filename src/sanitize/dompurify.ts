@@ -2,6 +2,7 @@ import type { BaselineConfig } from "./config.js";
 import type { SanitizationNote } from "../types.js";
 import { SafeFragmentError } from "../errors.js";
 import { getSharedState, type SharedState } from "../shared-state.js";
+import { getInertRealm, inertRealmApplies, peekInertRealm, type InertRealmMode } from "../platform/realm.js";
 
 /**
  * Narrow slice of the DOMPurify instance surface this module actually
@@ -85,8 +86,41 @@ export async function getDOMPurify(win: Window, loader?: DOMPurifyLoader): Promi
   const cached = instances.get(win);
   if (cached) return cached;
   const factory = await loadFactory(loader);
-  const raced = instances.get(win); // another render may have created it while we awaited
+  return instances.get(win) ?? createInstance(factory, win); // another render may have created it while we awaited
+}
+
+/** The DOMPurify instance for `doc`'s parse realm (ADR 0012, 0013), or `undefined` if none was created yet. */
+export function peekRealmDOMPurify(doc: Document, mode: InertRealmMode | undefined): DOMPurifyLike | undefined {
+  return peekDOMPurify(inertRealmApplies(doc, mode) ? peekInertRealm(doc, mode)?.window : doc.defaultView);
+}
+
+/**
+ * The ONE DOMPurify instance for `doc`'s parse realm, created on first use (see `getDOMPurify`). In the iframe realm
+ * it is created, and its Trusted Types policy registered, while the realm's iframe is attached; on Chromium the iframe
+ * is then removed, so DOMPurify's `DOMParser` documents have no execution context and report no CSP violations
+ * (ADR 0013). Falls back to `doc`'s own window when there is no realm.
+ */
+export async function getRealmDOMPurify(doc: Document, mode: InertRealmMode | undefined, loader?: DOMPurifyLoader): Promise<DOMPurifyLike> {
+  const win = doc.defaultView;
+  if (!win) {
+    throw new SafeFragmentError("SANITIZER_UNAVAILABLE", "DOMPurify fallback requires a Document with a defaultView (Window); none is available.");
+  }
+  const cached = peekRealmDOMPurify(doc, mode);
+  if (cached) return cached;
+  const factory = await loadFactory(loader);
+  // Synchronous from here on: no other render can detach or replace the realm in between.
+  const raced = peekRealmDOMPurify(doc, mode);
   if (raced) return raced;
+  let created: DOMPurifyLike | undefined;
+  const realm = getInertRealm(doc, mode, (realmWindow) => {
+    created = purifyState().instances.get(realmWindow) ?? createInstance(factory, realmWindow);
+  });
+  if (realm && created) return created;
+  return purifyState().instances.get(win) ?? createInstance(factory, win);
+}
+
+function createInstance(factory: DOMPurifyFactory, win: Window): DOMPurifyLike {
+  const instances = purifyState().instances;
   let purify: DOMPurifyLike;
   try {
     purify = factory(win);
@@ -113,6 +147,10 @@ export async function getDOMPurify(win: Window, loader?: DOMPurifyLoader): Promi
   purify.addHook("beforeSanitizeAttributes", (node) => {
     if (node.nodeType === 1 && node.hasAttribute("is")) node.removeAttribute("is");
   });
+  // DOMPurify registers its Trusted Types policy lazily, on the first sanitize(). Do it now, while `win` is
+  // certainly attached: a detached window can no longer create a policy (the realm iframe's is removed next).
+  // The empty input parses as a single comment.
+  purify.sanitize("", {});
   instances.set(win, purify);
   return purify;
 }
