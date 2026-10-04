@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.1 (2026-10-03)
 
 - **Fixed: the parse realm still reported CSP violations on Chromium, to its own document** (`24f0921`, [ADR 0013](docs/adr/0013-detached-parse-realm.md), corrects [ADR 0012](docs/adr/0012-parse-realm-iframe-for-csp.md) and the [#13](https://github.com/johnhenry/safe-fragment/issues/13) entry below). The hidden `about:blank` iframe inherits the page's CSP, `report-uri`/`report-to` included, so parsing in its documents raised every violation the page would have (`style-src-attr` twice per render for a `style=` attribute on the native engine; `style-src-elem`/`base-uri` too on DOMPurify): a console error and a CSP report each, dispatched to the iframe's document, which the test never watched. Nothing was ever applied (the style was blocked, then removed), and the reports went only to the page's own endpoints, but the README's "produces no CSP violations" was false. On Chromium the iframe is now removed in the same task that makes it (DOMPurify created and its Trusted Types policy registered first); documents of a detached window have no policy context and report nothing. Off Chromium a forced `inertRealm: "iframe"` keeps the attached iframe (WebKit's Trusted Types policies stop working in a detached window). Footprint: nothing stays in `<html>`; an observer sees one iframe inserted and removed per document. The CSP and Trusted Types violation tests now watch the page and every iframe inserted into it (`test/helpers/csp.ts`).
 

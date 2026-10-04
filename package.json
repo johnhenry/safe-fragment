@@ -1,6 +1,6 @@
 {
   "name": "@johnhenry/safe-fragment",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Framework-agnostic Web Components for rendering HTML-like source into live DOM only after applying an explicit versioned security profile -- never innerHTML/insertAdjacentHTML on untrusted input.",
   "type": "module",
   "publishConfig": {
