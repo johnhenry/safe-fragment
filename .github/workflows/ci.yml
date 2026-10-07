@@ -22,3 +22,6 @@ jobs:
         npm pack --dry-run
         npm run size
         npx --yes jsr publish --dry-run --allow-dirty
+
+  workflow-lint:
+    uses: johnhenry/workflows/.github/workflows/workflow-lint.yml@v1
